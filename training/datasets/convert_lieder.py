@@ -33,8 +33,7 @@ dataset_root = os.path.join(git_root, "datasets")
 lieder = os.path.join(dataset_root, "Lieder-main")
 quartets = os.path.join(dataset_root, "StringQuartets-main")
 lieder_train_index = os.path.join(lieder, "index.txt")
-musescore_path = os.path.join(dataset_root, "MuseScore")
-
+musescore_path = shutil.which("musescore4")
 
 class MusicXmlPage:
     def __init__(self, voices: list[list[Measure]], number_of_measures: int = 0) -> None:
@@ -128,6 +127,7 @@ def create_formats(source_file: str, formats: list[str]) -> list[dict[str, str]]
         "lc6001354",
         "lc6248307",
         "lc5935864",
+        "sq8940236"
     ]
     if any(issue in source_file for issue in files_with_known_issues):
         return jobs
@@ -154,7 +154,7 @@ def _create_musicxml_and_svg_files() -> None:
 
     mscx_files = list(Path(dest).rglob("*.mscx"))
 
-    MuseScore = os.path.join(dataset_root, "MuseScore")
+    MuseScore = shutil.which("musescore4")
 
     all_jobs = []
 
