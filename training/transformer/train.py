@@ -117,10 +117,12 @@ def train_transformer(
     )  # Compiling needs time, but pays off for large datasets
     if compile_model:
         eprint("Compiling model")
+    
+    eprint(f"Using fp32: {fp32}")
 
     run_id = get_run_id()
 
-    batch_size = 6 if fp32 else 24
+    batch_size = 6 if fp32 else 12
 
     train_args = TrainingArguments(
         checkpoint_folder,
@@ -164,8 +166,8 @@ def train_transformer(
     )
 
     if os.path.exists(model_destination):
+        os.remove(model_destination)
         eprint("Model already exists", model_destination)
-        return
 
     try:
         trainer = HomrTrainer(

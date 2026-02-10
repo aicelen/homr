@@ -43,6 +43,8 @@ _build/
 /testdata
 /examples
 /canon
+/images
+/image_bass
 *_try_*
 
 # WSL

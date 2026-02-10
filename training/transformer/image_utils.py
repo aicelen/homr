@@ -143,7 +143,7 @@ def apply_ink_fade(image: NDArray, p: float = 0.15) -> NDArray:
     Returns:
         Image with optional ink fade applied
     """
-    if np.random.random() > p:
+    if torch.rand(1).item() > p:
         return image
 
     h, w = image.shape[:2]
@@ -175,7 +175,7 @@ def apply_ink_fade(image: NDArray, p: float = 0.15) -> NDArray:
         gradient = (gradient - gradient.min()) / (gradient.max() - gradient.min())
 
     # Randomly flip gradient direction
-    if np.random.random() < 0.5:
+    if torch.rand(1).item() < 0.5:
         gradient = 1 - gradient
 
     # Apply subtle fade (max 30-40 brightness units to preserve legibility)
@@ -203,7 +203,7 @@ def apply_diverse_noise(image: NDArray, p: float = 0.5) -> NDArray:
     Returns:
         Image with diverse noise applied
     """
-    if np.random.random() > p:
+    if torch.rand(1).item() > p:
         return image
 
     result = image.copy().astype(np.float32)
@@ -234,7 +234,7 @@ def apply_diverse_noise(image: NDArray, p: float = 0.5) -> NDArray:
                 patch_noise = np.random.normal(0, noise_std, (patch_h, patch_w))
 
                 # Random shape (rectangular or circular)
-                if np.random.random() < 0.3:
+                if torch.rand(1).item() < 0.3:
                     # Circular mask
                     cy, cx = patch_h // 2, patch_w // 2
                     y_grid, x_grid = np.ogrid[:patch_h, :patch_w]
@@ -298,7 +298,7 @@ def apply_clahe(image: NDArray, p: float = 0.1) -> NDArray:
     Returns:
         Image with optional CLAHE applied
     """
-    if np.random.random() > p:
+    if torch.rand(1).item() > p:
         return image
 
     # Conservative CLAHE parameters to avoid artifacts
@@ -509,7 +509,7 @@ def _add_random_gray_tone(image_arr: NDArray) -> tuple[NDArray, int]:
     lightest_pixel_value = _find_lighest_non_white_pixel(gray)
 
     # Occasionally use lower minimum contrast for more challenging cases (20% of time)
-    if np.random.random() < 0.2:
+    if torch.rand(1).item() < 0.2:
         minimum_contrast = np.random.randint(50, 70)
     else:
         minimum_contrast = 70
