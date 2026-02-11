@@ -481,6 +481,7 @@ def convert_lieder(only_recreate_token_files: bool = False) -> None:
     eprint("Indexing Lieder dataset, this can up to several hours.")
     _create_musicxml_and_svg_files()
     music_xml_files = list(Path(os.path.join(lieder, "flat")).rglob("*.musicxml"))
+    print("Create lieder_train_index")
     with open(lieder_train_index, "w") as f:
         file_number = 0
         skipped_files = 0

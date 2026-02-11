@@ -122,7 +122,7 @@ def train_transformer(
 
     run_id = get_run_id()
 
-    batch_size = 6 if fp32 else 12
+    batch_size = 6 if fp32 else 16
 
     train_args = TrainingArguments(
         checkpoint_folder,
