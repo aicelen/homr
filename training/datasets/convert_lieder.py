@@ -1,3 +1,5 @@
+# run export QT_QPA_PLATFORM=offscreen
+
 import json
 import multiprocessing
 import os
@@ -268,6 +270,7 @@ def _split_file_into_staffs(
 ) -> list[str]:
     result: list[str] = []
     png_file = svg_file.filename.replace(".svg", ".png")
+    image = None
     if not just_token_files:
         target_width = 1400
         scale = target_width / svg_file.width
@@ -282,8 +285,8 @@ def _split_file_into_staffs(
             ],
             check=True,
         )
-        pil_img = Image.open(png_file).convert("L")
-        image = np.array(pil_img)
+        with Image.open(png_file) as pil_img:
+            image = np.array(pil_img.convert("L"))
     # alternate through voices
     staffs: list[SvgStaff] = sorted(svg_file.staffs.copy(), key=lambda x: x.y)
     current_voice = 0
@@ -329,6 +332,10 @@ def _split_file_into_staffs(
                 + "\n"
             )
         current_voice = (current_voice + 1) % number_of_voices
+
+    # Release large buffers deterministically between pages/files.
+    if image is not None:
+        del image
 
     return result
 
@@ -443,7 +450,19 @@ def _convert_token_and_image(path: Path) -> list[str]:
     return convert_xml_and_svg_file(path, False)
 
 
-def convert_lieder(only_recreate_token_files: bool = False) -> None:
+def _resolve_worker_count(workers: int | None) -> int:
+    if workers is not None:
+        return max(1, workers)
+    env_workers = os.getenv("HOMR_LIEDER_WORKERS")
+    if env_workers is not None:
+        try:
+            return max(1, int(env_workers))
+        except ValueError:
+            eprint("Ignoring invalid HOMR_LIEDER_WORKERS value:", env_workers)
+    return min(2, multiprocessing.cpu_count())
+
+
+def convert_lieder(only_recreate_token_files: bool = False, workers: int | None = None) -> None:
     if platform.system() == "Windows":
         eprint("Transformer training is only implemented for Linux")
         eprint("Feel free to submit a PR to support Windows")
@@ -482,10 +501,12 @@ def convert_lieder(only_recreate_token_files: bool = False) -> None:
     _create_musicxml_and_svg_files()
     music_xml_files = list(Path(os.path.join(lieder, "flat")).rglob("*.musicxml"))
     print("Create lieder_train_index")
+    worker_count = 6
+    eprint("Using", worker_count, "worker processes for indexing")
     with open(lieder_train_index, "w") as f:
         file_number = 0
         skipped_files = 0
-        with multiprocessing.Pool() as p:
+        with multiprocessing.Pool(processes=worker_count, maxtasksperchild=2) as p:
             for result in p.imap_unordered(
                 (
                     _convert_file_only_token
@@ -512,9 +533,16 @@ def convert_lieder(only_recreate_token_files: bool = False) -> None:
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn")
     only_recreate_token_files = False
+    workers: int | None = None
     if "--only-tokens" in sys.argv:
         only_recreate_token_files = True
+    if "--workers" in sys.argv:
+        worker_index = sys.argv.index("--workers")
+        if worker_index + 1 >= len(sys.argv):
+            eprint("Expected number after --workers")
+            sys.exit(1)
+        workers = int(sys.argv[worker_index + 1])
     elif len(sys.argv) > 1:
         eprint(str.join("", _convert_token_and_image(Path(sys.argv[1]))))
         sys.exit(0)
-    convert_lieder(only_recreate_token_files)
+    convert_lieder(only_recreate_token_files, workers)
