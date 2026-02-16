@@ -49,15 +49,13 @@ class ScoreTransformerWrapper(nn.Module):
         self.pos_emb = AbsolutePositionalEmbedding(
             config.decoder_dim, config.max_seq_len, l2norm_embed=l2norm_embed
         )
-        # The transformer operates on rotated images: height and width are swapped
         self.attention_dim = config.max_width * config.max_height // config.patch_size**2 + 1
-        self.attention_width = config.max_height // config.patch_size
-        self.attention_height = config.max_width // config.patch_size
+        self.attention_width = config.max_width // config.patch_size
+        self.attention_height = config.max_height // config.patch_size
         self.patch_size = config.patch_size
 
         self.attn_layers = attn_layers
         self.post_emb_norm = nn.LayerNorm(dim)
-        self.init_()
 
         self.to_logits_lift = nn.Linear(dim, config.num_lift_tokens)
         self.to_logits_pitch = nn.Linear(dim, config.num_pitch_tokens)
@@ -65,14 +63,23 @@ class ScoreTransformerWrapper(nn.Module):
         self.to_logits_position = nn.Linear(dim, config.num_position_tokens)
         self.to_logits_articulations = nn.Linear(dim, config.num_articulation_tokens)
 
+        self.init_()
+
     def init_(self) -> None:
         if self.l2norm_embed:
             nn.init.normal_(self.lift_emb.emb.weight, std=1e-5)
             nn.init.normal_(self.pitch_emb.emb.weight, std=1e-5)
             nn.init.normal_(self.rhythm_emb.emb.weight, std=1e-5)
-            nn.init.normal_(self.pos_emb.emb.weight, std=1e-5)
             nn.init.normal_(self.articulation_emb.emb.weight, std=1e-5)
-            return
+            nn.init.normal_(self.pos_emb.emb.weight, std=1e-5)
+        else:
+            # Use transformer standard initialization (std=0.02)
+            # This provides stronger gradients than 1e-5 for faster convergence
+            nn.init.normal_(self.lift_emb.emb.weight, std=0.02)
+            nn.init.normal_(self.pitch_emb.emb.weight, std=0.02)
+            nn.init.normal_(self.rhythm_emb.emb.weight, std=0.02)
+            nn.init.normal_(self.articulation_emb.emb.weight, std=0.02)
+            nn.init.normal_(self.pos_emb.emb.weight, std=0.02)
 
     def forward(
         self,
@@ -118,6 +125,7 @@ class ScoreTransformerWrapper(nn.Module):
                 out_articulations,
                 x,
                 attention,
+                None,
             )
 
         else:
@@ -222,15 +230,10 @@ class ScoreTransformerWrapper(nn.Module):
 
 
 class ScoreDecoder(nn.Module):
-    def __init__(
-        self,
-        transformer: ScoreTransformerWrapper,
-        config: Config,
-        ignore_index: int = -100,
-    ):
+    def __init__(self, transformer: ScoreTransformerWrapper, config: Config):
         super().__init__()
         self.pad_value = (config.pad_token,)
-        self.ignore_index = ignore_index
+        self.ignore_index = config.pad_token
         self.config = config
         self.net = transformer
         self.max_seq_len = config.max_seq_len
@@ -351,6 +354,7 @@ class ScoreDecoder(nn.Module):
         articulations: torch.Tensor,
         positions: torch.Tensor,
         mask: torch.Tensor,
+        sampling_prob: float = 1.0,
         **kwargs: Any,
     ) -> dict[str, Any]:
         liftsi = lifts[:, :-1]
@@ -361,12 +365,61 @@ class ScoreDecoder(nn.Module):
         pitchso = pitchs[:, 1:]
         rhythmsi = rhythms[:, :-1]
         rhythmso = rhythms[:, 1:]
+        positionsi = positions[:, :-1]
         positionso = positions[:, 1:]
 
         if mask.shape[1] == rhythms.shape[1]:
             mask = mask[:, :-1]
 
-        rhythmsp, pitchsp, liftsp, positionsp, articulationsp, x, _attention = self.net(
+        # Scheduled Sampling: Two-pass approach
+        if self.training and sampling_prob < 1.0:
+            with torch.no_grad():
+                self.net.eval()
+                # First pass to get predictions
+                r_logits, p_logits, l_logits, pos_logits, a_logits, _, _, _ = self.net(
+                    rhythms=rhythmsi,
+                    pitchs=pitchsi,
+                    lifts=liftsi,
+                    articulations=articulationsi,
+                    mask=mask,
+                    cache=None,
+                    return_center_of_attention=False,
+                    **kwargs,
+                )
+                self.net.train()
+
+                # Greedy sampling (excluding BOS at index 0)
+                # logits[:, t] predicts tokens[:, t+1] (which is input[:, t+1])
+                # So logits[:, :-1] corresponds to inputs[:, 1:]
+                r_sample = r_logits[:, :-1].argmax(dim=-1)
+                p_sample = p_logits[:, :-1].argmax(dim=-1)
+                l_sample = l_logits[:, :-1].argmax(dim=-1)
+                a_sample = a_logits[:, :-1].argmax(dim=-1)
+                pos_sample = pos_logits[:, :-1].argmax(dim=-1)
+
+                # Determine which indices to replace
+                mix_mask = (
+                    torch.rand(r_sample.shape, device=rhythms.device) > sampling_prob
+                ).long()
+
+                # Mix inputs
+                rhythmsi = rhythmsi.clone()
+                rhythmsi[:, 1:] = (1 - mix_mask) * rhythmsi[:, 1:] + mix_mask * r_sample
+
+                pitchsi = pitchsi.clone()
+                pitchsi[:, 1:] = (1 - mix_mask) * pitchsi[:, 1:] + mix_mask * p_sample
+
+                liftsi = liftsi.clone()
+                liftsi[:, 1:] = (1 - mix_mask) * liftsi[:, 1:] + mix_mask * l_sample
+
+                articulationsi = articulationsi.clone()
+                articulationsi[:, 1:] = (1 - mix_mask) * articulationsi[:, 1:] + mix_mask * a_sample
+
+                positionsi = positionsi.clone()
+                positionsi[:, 1:] = (1 - mix_mask) * positionsi[:, 1:] + mix_mask * pos_sample
+
+        # Second pass (or standard pass) with (possibly mixed) inputs
+        rhythmsp, pitchsp, liftsp, positionsp, articulationsp, x, _attention, _cache = self.net(
             rhythms=rhythmsi,
             pitchs=pitchsi,
             lifts=liftsi,
@@ -378,12 +431,12 @@ class ScoreDecoder(nn.Module):
         )  # this calls ScoreTransformerWrapper.forward
 
         # From the TR OMR paper equation 2, we use however different values for alpha and beta
-        alpha = 0.1
+        alpha = 1
         beta = 1
         loss_consist = beta * self.calConsistencyLoss(
             rhythmsp, pitchsp, liftsp, positionsp, articulationsp, mask
         )
-        loss_rhythm = alpha * self.cross_entropy(rhythmsp, rhythmso)
+        loss_rhythm = alpha * self.cross_entropy(rhythmsp, rhythmso, label_smoothing=0.1)
         loss_pitch = alpha * self.cross_entropy(pitchsp, pitchso)
         loss_lift = alpha * self.cross_entropy(liftsp, liftso)
         loss_articulations = alpha * self.cross_entropy(articulationsp, articulationso)
@@ -448,6 +501,7 @@ class ScoreDecoder(nn.Module):
         self,
         logits: torch.Tensor,
         target: torch.Tensor,
+        label_smoothing: float = 0.0,
         weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
         return F.cross_entropy(
@@ -456,7 +510,7 @@ class ScoreDecoder(nn.Module):
             reduction="mean",
             weight=weights,
             ignore_index=self.ignore_index,
-            label_smoothing=0.1,
+            label_smoothing=label_smoothing,
         )
 
 

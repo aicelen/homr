@@ -10,7 +10,7 @@ root_dir = os.getcwd()
 
 class FilePaths:
     def __init__(self) -> None:
-        model_name = "pytorch_model_317-6f72a0bc2577907503e7ec84ac9850a5a972ded0"
+        model_name = "pytorch_model_326-290d4e79aa377681523ca676b984b9cee3eb16ce"
         self.encoder_path = os.path.join(
             workspace,
             f"encoder_{model_name}.onnx",
@@ -30,11 +30,7 @@ class FilePaths:
         )  # noqa: E501
 
         self.checkpoint = os.path.join(
-            root_dir,
-            "training",
-            "architecture",
-            "transformer",
-            f"{model_name}.pth",
+            root_dir, "current_training", "checkpoint-32019", "model.safetensors"
         )
 
         self.rhythmtokenizer = os.path.join(workspace, "tokenizer_rhythm.json")
@@ -103,9 +99,12 @@ class Config:
         self.encoder_structure = "convnext"
         self.encoder_depth = 8
         self.backbone_layers = [3, 4, 6, 3]
-        self.encoder_dim = 312
+        self.encoder_dim = 512
+        # encoder_h_dim balances how many dimensions the
+        # horizontal vs vertical embeddings get
+        self.encoder_h_dim = self.encoder_dim // 3
         self.encoder_heads = 8
-        self.decoder_dim = 312
+        self.decoder_dim = self.encoder_dim
         self.decoder_depth = 8
         self.decoder_heads = 8
         self.decoder_args = DecoderArgs()
@@ -115,6 +114,11 @@ class Config:
         self.articulation_vocab = self.vocab.articulation
         self.position_vocab = self.vocab.position
         self.use_gpu_inference = True
+
+        # Scheduled Sampling parameters
+        self.scheduled_sampling_start_prob = 1.0
+        self.scheduled_sampling_end_prob = 0.7
+        self.scheduled_sampling_decay_steps = 20000
 
     def to_dict(self) -> dict[str, Any]:
         return {

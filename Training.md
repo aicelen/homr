@@ -55,6 +55,33 @@ This validation provides a **more representative indication of overall system pe
 
 Implementation: `rate_validation_result.py`
 
+## Run 328 Epch 21
+
+Commit: a78209527e2b8a4fb866fba9b2ef8540f4b8dad9
+Day: 14 Feb 2026  
+Transformer Smoke Test: SER 10%
+System Level: 16.0 diffs, SER: 9.3%
+
+Harder augmentation, https://github.com/liebharc/homr/pull/59
+
+## Run 326 Epoch 13
+
+Commit: 290d4e79aa377681523ca676b984b9cee3eb16ce
+Day: 13 Feb 2026  
+Transformer Smoke Test: SER 13%
+System Level: 42.8 diffs, SER: 32.8%
+
+Backtracking, removed 90deg rotation and sinusoidal bias, https://github.com/liebharc/homr/pull/59
+
+## Run 322 Epoch 14
+
+Commit: fd3d66d7d989003ec4cadd1d594ca2e820ece941
+Day: 12 Feb 2026  
+Transformer Smoke Test: SER 12%
+System Level: 18.1 diffs, SER: 22.4%
+
+Improved pitch accuracy, https://github.com/liebharc/homr/pull/59
+
 ## Run 317
 
 Commit: 6f72a0bc2577907503e7ec84ac9850a5a972ded0
@@ -62,7 +89,7 @@ Day: 4 Feb 2026
 Transformer Smoke Test: SER 15%
 System Level: 25.9 diffs, SER: 15.5%
 
-ConvNext https://github.com/liebharc/homr/pull/59
+ConvNext, https://github.com/liebharc/homr/pull/59
 
 ## Run 286 - after segnet update
 

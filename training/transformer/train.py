@@ -1,10 +1,17 @@
 import os
 import shutil
 import sys
+from typing import Any
 
 import torch
 import torch._dynamo
-from transformers import EarlyStoppingCallback, TrainingArguments
+from transformers import (
+    EarlyStoppingCallback,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
+)
 
 from homr.simple_logging import eprint
 from homr.transformer.configs import Config
@@ -21,6 +28,35 @@ from training.transformer.metrics import HomrTrainer
 from training.transformer.mix_datasets import mix_training_sets
 
 torch._dynamo.config.suppress_errors = True
+
+
+class FreezeCallback(TrainerCallback):
+    """
+    Callback to freeze the backbone for a set number of epochs.
+    Standard practice is ~2 epochs.
+    """
+
+    def __init__(self, epochs_to_freeze: int = 2):
+        self.epochs_to_freeze = epochs_to_freeze
+        self._backbone_frozen = False
+
+    def on_train_begin(
+        self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any
+    ) -> None:
+        model = kwargs.get("model")
+        if model and hasattr(model, "freeze_backbone"):
+            eprint(f"Freezing backbone for the first {self.epochs_to_freeze} epochs")
+            model.freeze_backbone()
+            self._backbone_frozen = True
+
+    def on_epoch_begin(
+        self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any
+    ) -> None:
+        model = kwargs.get("model")
+        if model and self._backbone_frozen and state.epoch and state.epoch >= self.epochs_to_freeze:
+            eprint(f"Unfreezing backbone at epoch {state.epoch}")
+            model.unfreeze_backbone()
+            self._backbone_frozen = False
 
 
 def load_training_index(file_path: str) -> list[str]:
@@ -78,9 +114,9 @@ def _check_datasets_are_present(selected_datasets: list[str]) -> list[str]:
 def train_transformer(
     fp32: bool = False, resume: str = "", smoke_test: bool = False, fine_tune: bool = False
 ) -> None:
-    number_of_epochs = 70
+    number_of_epochs = 35
     if smoke_test:
-        number_of_epochs = 15
+        number_of_epochs = 10
     elif fine_tune:
         number_of_epochs = 15
     resume_from_checkpoint = None
@@ -92,10 +128,12 @@ def train_transformer(
         shutil.rmtree(os.path.join(git_root, checkpoint_folder))
 
     if smoke_test:
-        number_of_files = 10000
+        number_of_files = -1
         train_index = load_and_mix_training_sets(
-            _check_datasets_are_present([lieder_train_index]),
-            [1.0],
+            _check_datasets_are_present(
+                [lieder_train_index, grandstaff_train_index, primus_train_index]
+            ),
+            [1.0, 1.0, 1.0],
             number_of_files,
         )
     else:
@@ -170,12 +208,16 @@ def train_transformer(
         eprint("Model already exists", model_destination)
 
     try:
+        callbacks: list[TrainerCallback] = [EarlyStoppingCallback(early_stopping_patience=5)]
+        if not fine_tune:
+            callbacks.append(FreezeCallback(epochs_to_freeze=2))
+
         trainer = HomrTrainer(
             model,
             train_args,
             train_dataset=datasets["train"],
             eval_dataset=datasets["validation"],
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+            callbacks=callbacks,
         )
 
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)

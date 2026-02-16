@@ -373,11 +373,39 @@ def dewarp_staff_image(image: NDArray, staff: Staff, index: int, debug: Debug) -
 
 def warp_image_randomly(image: PIL.Image.Image) -> PIL.Image.Image:
     array = np.array(image)
-    result = warp_image_array_randomly(array)
+
+    # Randomly choose between two different warping algorithms
+    # to add more variety to the dewarping augmentation.
+    warp_algo = np.random.randint(0, 2)
+    if warp_algo == 0:
+        result = warp_image_array_randomly(array)
+    else:
+        result = warp_image_array_randomly2(array)
     return PIL.Image.fromarray(result)
 
 
 def warp_image_array_randomly(image: NDArray) -> NDArray:
+    center = (image.shape[1] // 2, image.shape[0] // 2)
+    num_points = 5
+    upper = [(i * image.shape[1] // num_points, 0) for i in range(num_points)]
+    source = [(i * image.shape[1] // num_points, center[1]) for i in range(num_points)]
+    lower = [(i * image.shape[1] // num_points, image.shape[0]) for i in range(num_points)]
+    max_random_offset = 20
+    destination = [
+        (
+            i * image.shape[1] // num_points,
+            center[1] + np.random.randint(-max_random_offset, max_random_offset),
+        )
+        for i in range(num_points)
+    ]
+    result = calculate_dewarp_transformation(
+        image, [upper, source, lower], [upper, destination, lower]
+    ).dewarp(image, fill_color=255, order=3)
+
+    return result.astype(np.uint8)
+
+
+def warp_image_array_randomly2(image: NDArray) -> NDArray:
     """
     Apply a smooth random warp to the image to simulate paper folding/bending.
     Uses cv2.remap with a 1D vertical displacement pattern (tiled horizontally)
@@ -391,7 +419,7 @@ def warp_image_array_randomly(image: NDArray) -> NDArray:
 
     # Generate random vertical displacement (same for both rows)
     # alpha controls the maximum displacement in pixels
-    alpha = np.random.uniform(5, 20)
+    alpha = np.random.uniform(5, 25)
     dy_row = np.random.uniform(-1, 1, (1, grid_w)).astype(np.float32)
 
     # Anchor left and right edges to zero displacement

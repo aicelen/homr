@@ -29,6 +29,7 @@ class TrOMR(nn.Module):
         articulations: torch.Tensor,
         positions: torch.Tensor,
         mask: torch.Tensor,
+        sampling_prob: float = 1.0,
         **kwargs: Any,
     ) -> Any:
         context = self.encoder(inputs)
@@ -40,6 +41,7 @@ class TrOMR(nn.Module):
             positions=positions,
             context=context,
             mask=mask,
+            sampling_prob=sampling_prob,
             **kwargs,
         )
         return loss
@@ -63,6 +65,16 @@ class TrOMR(nn.Module):
         """Freeze all encoder parameters to prevent updates during training."""
         for param in self.encoder.parameters():
             param.requires_grad = False
+
+    def freeze_backbone(self) -> None:
+        """Freeze only the encoder backbone."""
+        if hasattr(self.encoder, "freeze_backbone"):
+            self.encoder.freeze_backbone()
+
+    def unfreeze_backbone(self) -> None:
+        """Unfreeze the encoder backbone."""
+        if hasattr(self.encoder, "unfreeze_backbone"):
+            self.encoder.unfreeze_backbone()
 
     def unfreeze_lift_decoder(self) -> None:
         for param in self.decoder.net.lift_emb.parameters():
