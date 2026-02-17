@@ -123,6 +123,7 @@ def train_transformer(
 
     checkpoint_folder = "current_training"
     if resume:
+        print(git_root, checkpoint_folder, resume)
         resume_from_checkpoint = os.path.join(git_root, checkpoint_folder, resume)
     elif os.path.exists(os.path.join(git_root, checkpoint_folder)):
         shutil.rmtree(os.path.join(git_root, checkpoint_folder))
@@ -158,7 +159,7 @@ def train_transformer(
 
     run_id = get_run_id()
 
-    batch_size = 6 if fp32 else 16
+    batch_size = 6 if fp32 else 12
 
     train_args = TrainingArguments(
         checkpoint_folder,
@@ -226,9 +227,6 @@ def train_transformer(
 
 
 if __name__ == "__main__":
-    if "--fine" in sys.argv:
-        train_transformer(fp32=False, fine_tune=True)
-    elif len(sys.argv) > 1:
-        raise ValueError("Unknown argument")
-    else:
-        train_transformer(smoke_test=True)
+    train_transformer(
+        resume="checkpoint-5524",
+    )
