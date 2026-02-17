@@ -121,7 +121,9 @@ def train_transformer(
         number_of_epochs = 15
     resume_from_checkpoint = None
 
-    checkpoint_folder = "current_training"
+    run_id = get_run_id()
+
+    checkpoint_folder = f"training_{run_id}"
     if resume:
         print(git_root, checkpoint_folder, resume)
         resume_from_checkpoint = os.path.join(git_root, checkpoint_folder, resume)
@@ -157,9 +159,7 @@ def train_transformer(
     if compile_model:
         eprint("Compiling model")
 
-    run_id = get_run_id()
-
-    batch_size = 6 if fp32 else 12
+    batch_size = 8
 
     train_args = TrainingArguments(
         checkpoint_folder,
@@ -169,7 +169,7 @@ def train_transformer(
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
         optim="adamw_torch_fused",
-        gradient_accumulation_steps=4,
+        gradient_accumulation_steps=8,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size // 2,
         num_train_epochs=number_of_epochs,
@@ -228,5 +228,5 @@ def train_transformer(
 
 if __name__ == "__main__":
     train_transformer(
-        resume="checkpoint-5524",
+        resume="checkpoint-7366",
     )
