@@ -30,7 +30,7 @@ def convert_transformer_quant() -> None:
     Converts and Quantizes the Transformer (results in an encoder and a decoder).
     """
     config = Config()
-    split_weights(config.filepaths.checkpoint)
+    split_weights("pytorch_model_334-4b6d17938d1df3aa342586e3cde72a14a618394e_epoch11.pth")
     path_to_encoder = convert_encoder()
     simplify_onnx_model(path_to_encoder)
     print(path_to_encoder)

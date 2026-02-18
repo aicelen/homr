@@ -184,7 +184,8 @@ def train_transformer(
         label_names=label_names,
         bf16=not fp32,
         dataloader_pin_memory=True,
-        dataloader_num_workers=12,
+        dataloader_num_workers=8,
+        dataloader_prefetch_factor=4
     )
 
     if fine_tune:
@@ -228,5 +229,5 @@ def train_transformer(
 
 if __name__ == "__main__":
     train_transformer(
-        resume="checkpoint-7366",
+        resume="checkpoint-11048",
     )
