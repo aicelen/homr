@@ -123,7 +123,7 @@ def train_transformer(
 
     run_id = get_run_id()
 
-    checkpoint_folder = f"training_{run_id}"
+    checkpoint_folder = f"training_334"
     if resume:
         print(git_root, checkpoint_folder, resume)
         resume_from_checkpoint = os.path.join(git_root, checkpoint_folder, resume)
@@ -229,5 +229,5 @@ def train_transformer(
 
 if __name__ == "__main__":
     train_transformer(
-        resume="checkpoint-11048",
+        resume="checkpoint-93908",
     )

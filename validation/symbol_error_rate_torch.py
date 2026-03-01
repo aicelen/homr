@@ -97,7 +97,7 @@ def calc_symbol_error_rate_for_list(
         eprint("Expected:", result[0])
         eprint("Actual  :", result[1])
 
-    ser_avg = round(100 * sum(all_sers) / len(all_sers))
+    ser_avg = 100 * sum(all_sers) / len(all_sers)
     eprint(f"Done after {round(inference_time, 2)} seconds, SER avg: {ser_avg}%")
 
     with open(result_file, "w") as f:
