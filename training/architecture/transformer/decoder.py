@@ -139,7 +139,7 @@ class ScoreTransformerWrapper(nn.Module):
             cache_input = LayerIntermediates(attn_intermediates=inters, cache_length=cache_len)
 
             x, cache = self.attn_layers(
-                x, cache=cache_input, mask=mask, return_hiddens=True, context=context
+                x, cache=cache_input, mask=mask, return_hiddens=True, context=context, **kwargs
             )
 
             # get the kv cache tensors from the LayerIntermediates class

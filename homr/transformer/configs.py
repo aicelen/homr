@@ -37,6 +37,15 @@ class FilePaths:
             f"{model_name}.pth",
         )
 
+        self.transformer_litert_tflite = os.path.join(
+            workspace,
+            "staff2score_cpu_test.tflite",
+        )
+        self.transformer_litert_lm = os.path.join(
+            workspace,
+            "staff2score_cpu_test.litertlm",
+        )
+
         self.rhythmtokenizer = os.path.join(workspace, "tokenizer_rhythm.json")
         self.lifttokenizer = os.path.join(workspace, "tokenizer_lift.json")
         self.pitchtokenizer = os.path.join(workspace, "tokenizer_pitch.json")
@@ -45,6 +54,8 @@ class FilePaths:
     def to_dict(self) -> dict[str, Any]:
         return {
             "checkpoint": self.checkpoint,
+            "transformer_litert_tflite": self.transformer_litert_tflite,
+            "transformer_litert_lm": self.transformer_litert_lm,
             "rhythmtokenizer": self.rhythmtokenizer,
             "lifttokenizer": self.lifttokenizer,
             "pitchtokenizer": self.pitchtokenizer,

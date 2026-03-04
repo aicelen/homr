@@ -7,6 +7,7 @@ __pycache__/
 .idea/
 *.log
 *.env
+.venv_clean/
 
 # Docs
 _build/
@@ -28,6 +29,8 @@ _build/
 *.onnx
 *.pt
 *.onnx.data
+*.tflite
+*.litertlm
 
 # Byprodcuts of a training run
 /seg_unet.keras
