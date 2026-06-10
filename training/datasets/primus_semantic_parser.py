@@ -138,14 +138,14 @@ def change_tieSlur(tokens: list[EncodedSymbol]) -> list[EncodedSymbol]:
         if tokens[i + 1] == EncodedSymbol("tieSlur"):
             index_next = find_next_note(tokens, i)
             if index_next:
-                tokens[index_next].slur = "slurStop"
+                tokens[index_next].slur = "tieStop"
 
             index_last = find_last_note(tokens, i)
             if index_last:
-                if tokens[index_last].slur == "slurStop":
-                    tokens[index_last].slur = "slurStart_slurStop"
+                if tokens[index_last].slur == "tieStop":
+                    tokens[index_last].slur = "tieStart_tieStop"
                 else:
-                    tokens[index_last].slur = "slurStart"
+                    tokens[index_last].slur = "tieStart"
 
         if tokens[i] != EncodedSymbol("tieSlur"):
             result.append(tokens[i])

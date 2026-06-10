@@ -162,7 +162,7 @@ def build_articulation() -> dict[str, int]:
 
 def build_slur() -> dict[str, int]:
     slur = [nonote, empty]
-    slur.extend(["slurStart_slurStop", "slurStart", "slurStop"])
+    slur.extend(["slurStart_slurStop", "slurStart", "slurStop", "tieStart_tieStop", "tieStart", "tieStop"])
     return build_dict(slur)
 
 

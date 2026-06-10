@@ -167,9 +167,9 @@ def remove_problematic_files(result: str) -> bool:
 
             slur = parts[4]
 
-            if "slurStart" in slur:
+            if "tieStart" in slur:
                 slur_starts += 1
-            if "slurStop" in slur:
+            if "tieStop" in slur:
                 slur_stops += 1
 
     if slur_starts == slur_stops:

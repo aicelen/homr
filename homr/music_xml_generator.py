@@ -595,6 +595,16 @@ def build_slurs(note: mxl.XMLNote, slurs: str, slur_number: int) -> None:
         # otherwise the slur starts and directly stops
         notation.add_child(mxl.XMLSlur(type="stop", number=slur_number))
         notation.add_child(mxl.XMLSlur(type="start", number=slur_number))
+    elif slurs == "tieStart":
+        notation.add_child(mxl.XMLTie(type="start", number=slur_number))
+    elif slurs == "tieStop":
+        notation.add_child(mxl.XMLTie(type="stop", number=slur_number))
+    elif slurs == "tieStart_tieStop":
+        # It is important to first add the stop and than the start
+        # otherwise the slur starts and directly stops
+        notation.add_child(mxl.XMLTie(type="stop", number=slur_number))
+        notation.add_child(mxl.XMLTie(type="start", number=slur_number))
+
     else:
         raise ValueError("Unsupported slur " + slurs)
 

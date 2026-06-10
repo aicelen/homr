@@ -454,7 +454,7 @@ def _collect_articulation(note: mxl.XMLNote, part: TokensPart, staff: int) -> tu
             articulations.append("arpeggiate")
         if isinstance(child, mxl.XMLTied):
             tie_type = str(child.attributes.get("type", ""))
-            slurs.append("slur" + tie_type.capitalize())
+            slurs.append("tie" + tie_type.capitalize())
         if isinstance(child, mxl.XMLSlur):
             slur_type = str(child.attributes.get("type", ""))
             slurs.append("slur" + slur_type.capitalize())
