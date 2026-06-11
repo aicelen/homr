@@ -154,9 +154,9 @@ class TestMusicXmlParser(unittest.TestCase):
         expected = """clef_G2 _ _ _ _ upper&clef_F4 _ _ _ _ lower
 keySignature_1 . . . . .
 timeSignature/4 . . . . .
-note_1 G4 _ _ slurStart_slurStop upper&note_1 A3 # _ _ upper&rest_2 _ _ _ _ upper&note_4 G3 _ _ slurStop lower
+note_1 G4 _ _ tieStart_tieStop upper&note_1 A3 # _ tieStop upper&rest_2 _ _ _ _ upper&note_4 G3 _ _ slurStop lower
 rest_4 _ _ _ _ lower
-note_2 E4 _ _ slurStart upper&note_2 C2 _ _ _ lower
+note_2 E4 _ _ tieStart upper&note_2 C2 _ _ _ lower
 barline . . . . ."""
         self.assertEqual(token_str, expected)
 
@@ -444,11 +444,11 @@ barline . . . . ."""
         expected = """clef_G2 _ _ _ _ upper&clef_F4 _ _ _ _ lower
 keySignature_1 . . . . .
 timeSignature/4 . . . . .
-note_12 B5 _ _ slurStart_slurStop upper&note_12 G5 _ _ _ upper&note_4 B1 _ _ _ lower
+note_12 B5 _ _ tieStop upper&note_12 G5 _ _ slurStart_tieStop upper&note_4 B1 _ _ _ lower
 note_12 G5 _ staccato _ upper&note_12 D5 # _ _ upper
 note_12 D5 # staccato _ upper&note_12 B4 _ _ _ upper
 note_2 B4 _ _ slurStart_slurStop upper&note_4 G4 _ _ _ upper&note_4 B3 _ _ _ lower&note_4 D3 # _ _ lower
-note_4 A4 _ _ slurStop upper&note_4 F4 # _ _ upper&note_4 B3 _ _ _ lower&note_4 D3 # _ _ lower
+note_4 A4 _ _ _ upper&note_4 F4 # _ slurStop upper&note_4 B3 _ _ _ lower&note_4 D3 # _ _ lower
 barline . . . . ."""
         self.assertEqual(token_str, expected)
 
@@ -508,6 +508,48 @@ keySignature_0 . . . . .
 timeSignature/4 . . . . .
 note_1 D5 _ _ _ upper&note_1 D4 _ _ _ upper&note_1 B3 _ arpeggiate _ lower&note_1 D3 _ _ _ lower&note_1 G2 _ _ _ lower
 barline . . . . ."""
+        self.assertEqual(token_str, expected)
+
+    def test_duplicate_numbered_slurs_are_collapsed(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>1</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration>
+        <tie type="start"/>
+        <tie type="start"/>
+        <voice>1</voice>
+        <type>quarter</type>
+        <staff>1</staff>
+        <notations>
+          <tied type="start"/>
+          <tied type="start"/>
+          <slur type="start" number="1"/>
+          <slur type="start" number="2"/>
+        </notations>
+      </note>
+      <barline location="right"><bar-style>light-heavy</bar-style></barline>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        tokens = music_xml_string_to_tokens(example)
+        flat_list = [x for xxs in tokens for xs in xxs for x in xs]
+        token_str = token_lines_to_str(flat_list)
+        expected = """clef_G2 _ _ _ _ upper
+keySignature_0 . . . . .
+timeSignature/4 . . . . .
+note_4 C4 _ _ slurStart_tieStart upper
+bolddoublebarline . . . . ."""
         self.assertEqual(token_str, expected)
 
     def _norm_expected(self, expected: str) -> str:

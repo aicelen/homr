@@ -91,7 +91,7 @@ barline . . . . ."""
         expected = """clef_G2 _ _ _ _ upper&clef_F4 _ _ _ _ lower
 keySignature_1 . . . . .
 timeSignature/4 . . . . .
-note_12 B5 _ _ slurStart_slurStop upper&note_12 G5 _ _ _ upper
+note_12 B5 _ _ slurStop upper&note_12 G5 _ _ slurStart_slurStop upper
 note_12 G5 _ staccato _ upper&note_12 D5 # _ _ upper
 note_12 D5 # staccato _ upper&note_12 B4 _ _ _ upper
 note_2 B4 _ _ slurStart_slurStop upper&note_4 G4 _ _ _ upper&note_4 B3 _ _ _ lower&note_4 D3 # _ _ lower

@@ -31,8 +31,8 @@ class TestTrainingVocabulary(unittest.TestCase):
         result = token_lines_to_str(chord)
         self.maxDiff = None
         expected = (
-            "note_16 E4 . staccatissimo_tenuto slurStart_slurStop upper&note_32 D4 . _ _ upper"
-            "&note_8 C4 . _ _ upper&note_8 E5 . . . lower"
+            "note_16 E4 . staccatissimo_tenuto slurStart upper&note_32 D4 . _ slurStart_slurStop upper"
+            "&note_8 C4 . _ . upper&note_8 E5 . . . lower"
         )
         self.assertEqual(result, expected)
 
