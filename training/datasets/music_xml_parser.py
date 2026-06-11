@@ -463,6 +463,7 @@ def _collect_articulation(note: mxl.XMLNote, part: TokensPart, staff: int) -> tu
         articulations.append("tremolo")
 
     articulations = list(set(articulations))
+    slurs = list(set(slurs))
     if len(articulations) == 0 and len(slurs) == 0:
         return empty, empty
 
