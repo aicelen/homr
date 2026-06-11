@@ -34,7 +34,7 @@ class FilePaths:
             "training",
             "architecture",
             "transformer",
-            f"{model_name}.pth",
+            f"slurs-ties-epoch-7.safetensors",
         )
 
         self.rhythmtokenizer = os.path.join(workspace, "tokenizer_rhythm.json")
