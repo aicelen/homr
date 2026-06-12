@@ -574,7 +574,7 @@ def build_articulations(
         notation.add_child(parent)
 
 
-def build_slurs(note: mxl.XMLNote, slurs_i: str, slur_number: int, tie_number: int) -> None:
+def build_slurs(note: mxl.XMLNote, slurs_i: str, slur_number: int) -> None:
     notations = note.get_children_of_type(mxl.XMLNotations)
     if notations:
         notation = notations[0]
@@ -597,14 +597,14 @@ def build_slurs(note: mxl.XMLNote, slurs_i: str, slur_number: int, tie_number: i
             notation.add_child(mxl.XMLSlur(type="stop", number=slur_number))
             notation.add_child(mxl.XMLSlur(type="start", number=slur_number))
         elif slurs == "tieStart":
-            notation.add_child(mxl.XMLSlur(type="start", number=tie_number))
+            notation.add_child(mxl.XMLSlur(type="start", number=slur_number))
         elif slurs == "tieStop":
-            notation.add_child(mxl.XMLSlur(type="stop", number=tie_number))
+            notation.add_child(mxl.XMLSlur(type="stop", number=slur_number))
         elif slurs == "tieStart_tieStop":
             # It is important to first add the stop and than the start
             # otherwise the slur starts and directly stops
-            notation.add_child(mxl.XMLSlur(type="stop", number=tie_number))
-            notation.add_child(mxl.XMLSlur(type="start", number=tie_number))
+            notation.add_child(mxl.XMLSlur(type="stop", number=slur_number))
+            notation.add_child(mxl.XMLSlur(type="start", number=slur_number))
 
         else:
             raise ValueError("Unsupported slur " + slurs)
