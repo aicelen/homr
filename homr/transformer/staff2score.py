@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 
 from homr.simple_logging import eprint
-from homr.transformer.configs import Config
+from homr.transformer.configs import Config, BATCH_SIZE
 from homr.transformer.decoder_inference import get_decoder
 from homr.transformer.encoder_inference import Encoder
 from homr.transformer.vocabulary import EncodedSymbol
@@ -19,6 +19,7 @@ class Staff2Score:
 
     def __init__(self, config: Config) -> None:
         self.config = config
+        self.config.use_gpu_inference = False
         self.encoder = Encoder(self.config)
         self.decoder = get_decoder(self.config)
 
@@ -31,16 +32,25 @@ class Staff2Score:
         """
         Inference an image (NDArray) using Tromr.
         """
-        x = _transform(image=image)
-
-        t0 = perf_counter()
+        data = np.tile(_transform(image=image), (BATCH_SIZE, 1, 1, 1))
+        print(data.shape)
 
         # Create special tokens
-        start_token = np.array([[1]], dtype=np.int64)
-        nonote_token = np.array([[0]], dtype=np.int64)
+        start_token  = np.ones((BATCH_SIZE, 1), dtype=np.int64)
+        nonote_token = np.zeros((BATCH_SIZE, 1), dtype=np.int64)
+        
+        # Make a prediction using decoder
+        self.decoder.generate(
+            start_token,
+            nonote_token,
+            seq_len=self.config.max_seq_len,
+            eos_token=self.config.eos_token,
+            context=self.encoder.generate(data),
+        )
 
+        t0 = perf_counter()
         # Generate context with encoder
-        context = self.encoder.generate(x)
+        context = self.encoder.generate(data)
 
         # Make a prediction using decoder
         out = self.decoder.generate(

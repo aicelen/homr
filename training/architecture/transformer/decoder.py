@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from homr.transformer.configs import Config
+from homr.transformer.configs import Config, BATCH_SIZE
 from homr.transformer.vocabulary import EncodedSymbol, has_rhythm_symbol_a_position
 from training.architecture.transformer.custom_x_transformer import (
     AbsolutePositionalEmbedding,
@@ -580,7 +580,7 @@ def init_cache(
     output_names = []
     dynamic = {}
     for i in range(32):
-        cache.append(torch.zeros((1, 8, cache_len, 64), dtype=torch.float32).to(device))
+        cache.append(torch.zeros((BATCH_SIZE, 8, cache_len, 64), dtype=torch.float32).to(device))
         input_names.append(f"cache_in{i}")
         output_names.append(f"cache_out{i}")
         dynamic[f"cache_in{i}"] = {2: "seq_len"}

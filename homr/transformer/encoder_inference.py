@@ -10,6 +10,7 @@ from homr.type_definitions import NDArray
 class Encoder:
     def __init__(self, config: Config) -> None:
         self.use_gpu = False
+        ort.preload_dlls()
         if config.use_gpu_inference:
             try:
                 self.encoder = ort.InferenceSession(

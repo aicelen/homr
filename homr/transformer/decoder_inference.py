@@ -4,10 +4,9 @@ import numpy as np
 import onnxruntime as ort
 
 from homr.simple_logging import eprint
-from homr.transformer.configs import Config
+from homr.transformer.configs import Config, BATCH_SIZE
 from homr.transformer.vocabulary import EncodedSymbol
 from homr.type_definitions import NDArray
-
 
 class ScoreDecoder:
     def __init__(
@@ -43,7 +42,6 @@ class ScoreDecoder:
             "out_positions",
             "out_articulations",
             "out_slurs",
-            "attention",
         ]
 
     def generate(
@@ -90,7 +88,7 @@ class ScoreDecoder:
             self.io_binding.bind_cpu_input("articulations", x_articulations)
             self.io_binding.bind_cpu_input("slurs", x_slurs)
             self.io_binding.bind_cpu_input("context", context)
-            self.io_binding.bind_cpu_input("cache_len", np.array([step], dtype=np.int64))
+            self.io_binding.bind_cpu_input("cache_len", np.full(BATCH_SIZE, step, dtype=np.int64))
             for name, cache_val in zip(kv_input_names, cache, strict=True):
                 self.io_binding.bind_ortvalue_input(name, cache_val)
 
@@ -103,7 +101,7 @@ class ScoreDecoder:
 
             # Get outputs
             outputs = self.io_binding.get_outputs()
-            cache = outputs[7:]
+            cache = outputs[6:]
 
             # Greedy decoding: pick the highest logit directly for each output
             rhythmsp = outputs[0].numpy()
@@ -112,14 +110,13 @@ class ScoreDecoder:
             positionsp = outputs[3].numpy()
             articulationsp = outputs[4].numpy()
             slursp = outputs[5].numpy()
-            attention = outputs[6].numpy()
 
-            rhythm_sample = np.array([[rhythmsp[:, -1, :].argmax()]])
-            pitch_sample = np.array([[pitchsp[:, -1, :].argmax()]])
-            lift_sample = np.array([[liftsp[:, -1, :].argmax()]])
-            articulation_sample = np.array([[articulationsp[:, -1, :].argmax()]])
-            slur_sample = np.array([[slursp[:, -1, :].argmax()]])
-            position_sample = np.array([[positionsp[:, -1, :].argmax()]])
+            rhythm_sample       = rhythmsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+            pitch_sample        = pitchsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+            lift_sample         = liftsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+            articulation_sample = articulationsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+            slur_sample         = slursp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+            position_sample     = positionsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
 
             lift_token = detokenize(lift_sample, self.inv_lift_vocab)
             pitch_token = detokenize(pitch_sample, self.inv_pitch_vocab)
@@ -138,15 +135,15 @@ class ScoreDecoder:
                 articulation=articulation_token[0],
                 slur=slur_token[0],
                 position=position_token[0],
-                coordinates=attention,
+                coordinates=None,
             )
             symbols.append(symbol)
 
-            out_lift = np.concatenate((out_lift, lift_sample), axis=-1)
-            out_pitch = np.concatenate((out_pitch, pitch_sample), axis=-1)
-            out_rhythm = np.concatenate((out_rhythm, rhythm_sample), axis=-1)
-            out_articulations = np.concatenate((out_articulations, articulation_sample), axis=-1)
-            out_slurs = np.concatenate((out_slurs, slur_sample), axis=-1)
+            out_lift          = np.concatenate((out_lift,          lift_sample),         axis=1)
+            out_pitch         = np.concatenate((out_pitch,         pitch_sample),        axis=1)
+            out_rhythm        = np.concatenate((out_rhythm,        rhythm_sample),       axis=1)
+            out_articulations = np.concatenate((out_articulations, articulation_sample), axis=1)
+            out_slurs         = np.concatenate((out_slurs,         slur_sample),         axis=1)
 
         return symbols
 
@@ -160,7 +157,7 @@ class ScoreDecoder:
             if self.fp16:  # the cache needs to be fp16 as well
                 cache.append(
                     ort.OrtValue.ortvalue_from_numpy(
-                        np.zeros((1, heads, cache_len, head_dim), dtype=np.float16),
+                        np.zeros((BATCH_SIZE, heads, cache_len, head_dim), dtype=np.float16),
                         "cuda" if self.use_gpu else "cpu",
                         self.device_id,
                     )
@@ -168,7 +165,7 @@ class ScoreDecoder:
             else:
                 cache.append(
                     ort.OrtValue.ortvalue_from_numpy(
-                        np.zeros((1, heads, cache_len, head_dim), dtype=np.float32),
+                        np.zeros((BATCH_SIZE, heads, cache_len, head_dim), dtype=np.float32),
                         "cuda" if self.use_gpu else "cpu",
                         self.device_id,
                     )

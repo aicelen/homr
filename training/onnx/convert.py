@@ -5,7 +5,7 @@ from torch.export import Dim
 
 from homr.segmentation.config import segnet_path_onnx, segnet_path_torch
 from homr.simple_logging import eprint
-from homr.transformer.configs import Config
+from homr.transformer.configs import Config, BATCH_SIZE
 from training.architecture.segmentation.model import create_segnet  # type: ignore
 from training.architecture.transformer.decoder import (
     ScoreTransformerWrapper,
@@ -48,7 +48,6 @@ class DecoderWrapper(torch.nn.Module):
             out_articulations,
             out_slurs,
             _x,
-            attention,
             *cache,
         ) = self.model(
             rhythms=rhythms,
@@ -60,7 +59,7 @@ class DecoderWrapper(torch.nn.Module):
             cache_len=cache_len,
             mask=None,
             cache=cache,
-            return_center_of_attention=True,
+            return_center_of_attention=False,
         )
         return (
             out_rhythms,
@@ -69,7 +68,6 @@ class DecoderWrapper(torch.nn.Module):
             out_positions,
             out_articulations,
             out_slurs,
-            attention,
             *cache,
         )
 
@@ -101,7 +99,7 @@ def convert_encoder(overwrite: bool) -> str | None:
     model.eval()
 
     # Prepare input tensor
-    input_tensor = torch.randn(1, 1, config.max_height, config.max_width).float()
+    input_tensor = torch.randn(BATCH_SIZE, 1, config.max_height, config.max_width).float()
 
     # Export to onnx
     torch.onnx.export(
@@ -148,14 +146,14 @@ def convert_decoder(overwrite: bool) -> str | None:
     kv_cache, kv_input_names, kv_output_names, dynamic_axes, cache_length = init_cache(
         0, torch.device("cpu")
     )
-    rhythms = torch.randint(0, config.num_rhythm_tokens, (1, 1)).long()
-    pitchs = torch.randint(0, config.num_pitch_tokens, (1, 1)).long()
-    lifts = torch.randint(0, config.num_lift_tokens, (1, 1)).long()
-    articulations = torch.randint(0, config.num_articulation_tokens, (1, 1)).long()
-    slurs = torch.randint(0, config.num_slur_tokens, (1, 1)).long()
-    cache_len = torch.tensor([cache_length]).long()
+    rhythms = torch.randint(0, config.num_rhythm_tokens, (BATCH_SIZE, 1)).long()
+    pitchs = torch.randint(0, config.num_pitch_tokens, (BATCH_SIZE, 1)).long()
+    lifts = torch.randint(0, config.num_lift_tokens, (BATCH_SIZE, 1)).long()
+    articulations = torch.randint(0, config.num_articulation_tokens, (BATCH_SIZE, 1)).long()
+    slurs = torch.randint(0, config.num_slur_tokens, (BATCH_SIZE, 1)).long()
+    cache_len = torch.full((BATCH_SIZE,), cache_length, dtype=torch.int64)
     cache = kv_cache
-    context = torch.randn((1, 1280, config.encoder_dim)).float()
+    context = torch.randn((BATCH_SIZE, 1280, config.encoder_dim)).float()
 
     dynamic_axes["context"] = {1: "cache_exists"}
 
@@ -180,7 +178,6 @@ def convert_decoder(overwrite: bool) -> str | None:
             "out_positions",
             "out_articulations",
             "out_slurs",
-            "attention",
             *kv_output_names,
         ],
         dynamic_axes=dynamic_axes,
