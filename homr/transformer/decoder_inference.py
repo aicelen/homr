@@ -3,7 +3,6 @@ from typing import Any
 import numpy as np
 import onnxruntime as ort
 
-from homr.onnx_providers import gpu_providers
 from homr.simple_logging import eprint
 from homr.transformer.configs import Config, BATCH_SIZE
 from homr.transformer.vocabulary import EncodedSymbol
@@ -68,7 +67,7 @@ class ScoreDecoder:
         context = kwargs["context"]
         context_reduced = kwargs["context"][:, :1]
 
-        symbols: list[EncodedSymbol] = []
+        symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
 
         for step in range(self.max_seq_len):
             x_lift = out_lift[:, -1:]  # for all: shape=(1,1)
@@ -112,12 +111,16 @@ class ScoreDecoder:
             articulationsp = outputs[4].numpy()
             slursp = outputs[5].numpy()
 
+            print(slursp.shape) #1,1,5
+
             rhythm_sample       = rhythmsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             pitch_sample        = pitchsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             lift_sample         = liftsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             articulation_sample = articulationsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             slur_sample         = slursp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             position_sample     = positionsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+
+            print(slur_sample.shape) # 1,1
 
             lift_token = detokenize(lift_sample, self.inv_lift_vocab)
             pitch_token = detokenize(pitch_sample, self.inv_pitch_vocab)
@@ -126,26 +129,30 @@ class ScoreDecoder:
             slur_token = detokenize(slur_sample, self.inv_slur_vocab)
             position_token = detokenize(position_sample, self.inv_position_vocab)
 
+            print(len(slur_token)) # 1
+
             if rhythm_sample[0][0] == self.eos_token:
                 break
-
-            symbol = EncodedSymbol(
-                rhythm=rhythm_token[0],
-                pitch=pitch_token[0],
-                lift=lift_token[0],
-                articulation=articulation_token[0],
-                slur=slur_token[0],
-                position=position_token[0],
-                coordinates=None,
-            )
-            symbols.append(symbol)
+            
+            for j in range(len(rhythm_token)):
+                symbol = EncodedSymbol(
+                    rhythm=rhythm_token[j],
+                    pitch=pitch_token[j],
+                    lift=lift_token[j],
+                    articulation=articulation_token[j],
+                    slur=slur_token[j],
+                    position=position_token[j],
+                    coordinates=None,
+                )
+                symbols[j].append(symbol)
 
             out_lift          = np.concatenate((out_lift,          lift_sample),         axis=1)
             out_pitch         = np.concatenate((out_pitch,         pitch_sample),        axis=1)
             out_rhythm        = np.concatenate((out_rhythm,        rhythm_sample),       axis=1)
             out_articulations = np.concatenate((out_articulations, articulation_sample), axis=1)
             out_slurs         = np.concatenate((out_slurs,         slur_sample),         axis=1)
-
+        
+        print(symbols)
         return symbols
 
     def init_cache(self, cache_len: int = 0) -> tuple[list[NDArray], list[str], list[str]]:
@@ -189,19 +196,15 @@ def get_decoder(config: Config) -> ScoreDecoder:
     use_gpu = False
     if config.use_gpu_inference:
         try:
-            providers, device = gpu_providers()
             onnx_transformer = ort.InferenceSession(
-                config.filepaths.decoder_path_fp16, providers=providers
+                config.filepaths.decoder_path_fp16, providers=["CUDAExecutionProvider"]
             )
             fp16 = True
             # Sometimes Ort falls automatically back to the CPU EP
-            # if so we get an error due to the device selection in init_cache().
-            # CoreML binds IO on the CPU (device == "cpu") even when the GPU/ANE runs the
-            # compute, so we only flip use_gpu on when CUDA device memory is in play.
-            active = onnx_transformer.get_providers()
-            if device == "cuda" and "CUDAExecutionProvider" in active:
+            # if so we get an error due to the device selection in init_cache()
+            if "CUDAExecutionProvider" in onnx_transformer.get_providers():
                 use_gpu = True
-            elif device == "cuda":
+            else:
                 eprint(
                     "Onnxruntime is not using GPU and therefore falling back to CPU. This is slow."
                 )

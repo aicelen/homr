@@ -68,7 +68,7 @@ class Staff2Score:
 
         eprint(f"Inference Time Tromr: {perf_counter()-t0}")
 
-        return [out]
+        return out
 
 
 class ConvertToArray:
