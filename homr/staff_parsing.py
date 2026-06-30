@@ -275,8 +275,10 @@ def parse_staffs(
     transformed_staffs = []
 
     for voice in range(number_of_voices):
+        staff_images_voice = []
+        transformed_staffs_voice = []
+
         staffs_for_voice = [staff.staffs[voice] for staff in staffs]
-        result_for_voice = []
         for staff_index, staff in enumerate(staffs_for_voice):
             if selected_staff >= 0 and staff_index != selected_staff:
                 eprint("Ignoring staff due to selected_staff argument", i)
@@ -285,19 +287,26 @@ def parse_staffs(
             staff_image, transformed_staff = prepare_staff_image(
                 debug, i, staff, image, regions=regions
             )
-            staff_images.append(staff_image)
-            transformed_staffs.append(transformed_staff)
 
-        # After homr
-        for staff_image, transformed_staff in zip(staff_images, transformed_staffs):
-            result_staff = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
-            if len(result_staff) == 0:
-                eprint("Skipping empty staff", i)
-                i += 1
-                continue
-            result_staff.append(EncodedSymbol("newline"))
-            result_for_voice.extend(result_staff)
-            i += 1
+            staff_images_voice.append(staff_image)
+            transformed_staffs_voice.append(transformed_staff)
+        
+        staff_images.extend(staff_images_voice)
+        transformed_staffs.extend(transformed_staffs_voice)
+
+    # After homr
+    eprint(len(transformed_staffs))
+    x = 0
+    for staff_image, transformed_staff in zip(staff_images, transformed_staffs):
+        x += 1
+        print(x)
+        result_for_voice = []
+        result_staff = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
+        if len(result_staff) == 0:
+            eprint("Skipping empty staff", i)
+            continue
+        result_staff.append(EncodedSymbol("newline"))
+        result_for_voice.extend(result_staff)
 
         voices.append(remove_duplicated_symbols(result_for_voice))
     return voices
