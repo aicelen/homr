@@ -288,26 +288,22 @@ def parse_staffs(
             voice_indexes.append(staff_index)
 
     # Run homr
-    eprint(len(transformed_staffs))
-    x = 0
     results = []
     for staff_image, transformed_staff in zip(staff_images, transformed_staffs):
-        x += 1
-        print(x)
         result_staff = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
-        if len(result_staff) == 0:
-            eprint("Skipping empty staff")
-            continue
-        result_staff.append(EncodedSymbol("newline"))
-        print(type(result_staff))
         results.append(result_staff)
 
     # Split staffs
     print(len(results))
     for voice_index_target in range(max(voice_indexes)+1):
         result_voice = []
-        for voice_index, result in zip(voice_indexes, results):
+        for voice_index, result_staff in zip(voice_indexes, results):
             if voice_index_target == voice_index:
-                result_voice.extend(result)
+                if len(result_staff) == 0:
+                    eprint("Skipping empty staff", voice_index)
+                    continue
+
+                result_staff.append(EncodedSymbol("newline"))
+                result_voice.extend(result_staff)
         voices.append(remove_duplicated_symbols(result_voice))
     return voices
