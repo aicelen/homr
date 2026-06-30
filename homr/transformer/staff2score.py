@@ -19,7 +19,6 @@ class Staff2Score:
 
     def __init__(self, config: Config) -> None:
         self.config = config
-        self.config.use_gpu_inference = False
         self.encoder = Encoder(self.config)
         self.decoder = get_decoder(self.config)
 
