@@ -270,6 +270,10 @@ def parse_staffs(
     i = 0
     voices = []
     regions = StaffRegions(staffs)
+
+    staff_images = []
+    transformed_staffs = []
+
     for voice in range(number_of_voices):
         staffs_for_voice = [staff.staffs[voice] for staff in staffs]
         result_for_voice = []
@@ -278,7 +282,15 @@ def parse_staffs(
                 eprint("Ignoring staff due to selected_staff argument", i)
                 i += 1
                 continue
-            result_staff = parse_staff_image(debug, i, staff, image, regions, config)
+            staff_image, transformed_staff = prepare_staff_image(
+                debug, i, staff, image, regions=regions
+            )
+            staff_images.append(staff_image)
+            transformed_staffs.append(transformed_staff)
+
+        # After homr
+        for staff_image, transformed_staff in zip(staff_images, transformed_staffs):
+            result_staff = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
             if len(result_staff) == 0:
                 eprint("Skipping empty staff", i)
                 i += 1
