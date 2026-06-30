@@ -257,29 +257,25 @@ def parse_staff_image(
 
 
 def parse_staffs(
-    debug: Debug, staffs: list[MultiStaff], image: NDArray, config: Config, selected_staff: int = -1
+    debug: Debug, systems: list[MultiStaff], image: NDArray, config: Config, selected_staff: int = -1
 ) -> list[list[EncodedSymbol]]:
     """
     Dewarps each staff and then runs it through an algorithm which extracts
     the rhythm and pitch information.
     """
-    staffs = _ensure_same_number_of_staffs(staffs, image)
+    systems = _ensure_same_number_of_staffs(systems, image)
     # For simplicity we call every staff in a multi staff a voice,
     # even if it's part of a grand staff.
-    number_of_voices = _get_number_of_voices(staffs)
+    number_of_voices = _get_number_of_voices(systems)
     i = 0
     voices = []
-    regions = StaffRegions(staffs)
+    regions = StaffRegions(systems)
 
     staff_images = []
     transformed_staffs = []
-
-    for voice in range(number_of_voices):
-        staff_images_voice = []
-        transformed_staffs_voice = []
-
-        staffs_for_voice = [staff.staffs[voice] for staff in staffs]
-        for staff_index, staff in enumerate(staffs_for_voice):
+    voice_indexes = []
+    for staffs in systems:
+        for staff_index, staff in enumerate(staffs.staffs):
             if selected_staff >= 0 and staff_index != selected_staff:
                 eprint("Ignoring staff due to selected_staff argument", i)
                 i += 1
@@ -287,26 +283,31 @@ def parse_staffs(
             staff_image, transformed_staff = prepare_staff_image(
                 debug, i, staff, image, regions=regions
             )
+            staff_images.append(staff_image)
+            transformed_staffs.append(transformed_staff)
+            voice_indexes.append(staff_index)
 
-            staff_images_voice.append(staff_image)
-            transformed_staffs_voice.append(transformed_staff)
-        
-        staff_images.extend(staff_images_voice)
-        transformed_staffs.extend(transformed_staffs_voice)
-
-    # After homr
+    # Run homr
     eprint(len(transformed_staffs))
     x = 0
+    results = []
     for staff_image, transformed_staff in zip(staff_images, transformed_staffs):
         x += 1
         print(x)
-        result_for_voice = []
         result_staff = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
         if len(result_staff) == 0:
-            eprint("Skipping empty staff", i)
+            eprint("Skipping empty staff")
             continue
         result_staff.append(EncodedSymbol("newline"))
-        result_for_voice.extend(result_staff)
+        print(type(result_staff))
+        results.append(result_staff)
 
-        voices.append(remove_duplicated_symbols(result_for_voice))
+    # Split staffs
+    print(len(results))
+    for voice_index_target in range(max(voice_indexes)+1):
+        result_voice = []
+        for voice_index, result in zip(voice_indexes, results):
+            if voice_index_target == voice_index:
+                result_voice.extend(result)
+        voices.append(remove_duplicated_symbols(result_voice))
     return voices
