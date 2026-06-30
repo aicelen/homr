@@ -66,6 +66,7 @@ class ScoreDecoder:
         output_names = self.output_names + kv_output_names
         context = kwargs["context"]
         context_reduced = kwargs["context"][:, :1]
+        finished = np.zeros(BATCH_SIZE, dtype=bool)
 
         symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
 
@@ -111,7 +112,7 @@ class ScoreDecoder:
             articulationsp = outputs[4].numpy()
             slursp = outputs[5].numpy()
 
-            print(slursp.shape) #1,1,5
+            #print(slursp.shape) #1,1,5
 
             rhythm_sample       = rhythmsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             pitch_sample        = pitchsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
@@ -120,7 +121,7 @@ class ScoreDecoder:
             slur_sample         = slursp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             position_sample     = positionsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
 
-            print(slur_sample.shape) # 1,1
+            #print(slur_sample.shape) # 1,1
 
             lift_token = detokenize(lift_sample, self.inv_lift_vocab)
             pitch_token = detokenize(pitch_sample, self.inv_pitch_vocab)
@@ -129,30 +130,33 @@ class ScoreDecoder:
             slur_token = detokenize(slur_sample, self.inv_slur_vocab)
             position_token = detokenize(position_sample, self.inv_position_vocab)
 
-            print(len(slur_token)) # 1
+            #print(len(slur_token)) # 1
 
-            if rhythm_sample[0][0] == self.eos_token:
+            if finished.all():
                 break
             
-            for j in range(len(rhythm_token)):
-                symbol = EncodedSymbol(
-                    rhythm=rhythm_token[j],
-                    pitch=pitch_token[j],
-                    lift=lift_token[j],
-                    articulation=articulation_token[j],
-                    slur=slur_token[j],
-                    position=position_token[j],
-                    coordinates=None,
-                )
-                symbols[j].append(symbol)
+            for j in range(BATCH_SIZE):
+                if rhythm_sample[j][0] == self.eos_token:
+                    finished[j] = 1
+                elif not finished[j]:
+                    symbol = EncodedSymbol(
+                        rhythm=rhythm_token[j],
+                        pitch=pitch_token[j],
+                        lift=lift_token[j],
+                        articulation=articulation_token[j],
+                        slur=slur_token[j],
+                        position=position_token[j],
+                        coordinates=None,
+                    )
+                    symbols[j].append(symbol)
 
             out_lift          = np.concatenate((out_lift,          lift_sample),         axis=1)
             out_pitch         = np.concatenate((out_pitch,         pitch_sample),        axis=1)
             out_rhythm        = np.concatenate((out_rhythm,        rhythm_sample),       axis=1)
             out_articulations = np.concatenate((out_articulations, articulation_sample), axis=1)
             out_slurs         = np.concatenate((out_slurs,         slur_sample),         axis=1)
-        
-        print(symbols)
+
+        print(f"{len(symbols[0])} symbols: {symbols}")
         return symbols
 
     def init_cache(self, cache_len: int = 0) -> tuple[list[NDArray], list[str], list[str]]:

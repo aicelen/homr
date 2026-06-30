@@ -302,7 +302,6 @@ def parse_staffs(
         results.extend(batch_results)
 
     # Split staffs
-    print(len(results))
     for voice_index_target in range(max(voice_indexes)+1):
         result_voice = []
         for voice_index, result_staff in zip(voice_indexes, results):

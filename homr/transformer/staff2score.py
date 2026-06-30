@@ -37,15 +37,6 @@ class Staff2Score:
         # Create special tokens
         start_token  = np.ones((BATCH_SIZE, 1), dtype=np.int64)
         nonote_token = np.zeros((BATCH_SIZE, 1), dtype=np.int64)
-        
-        # Make a prediction using decoder
-        self.decoder.generate(
-            start_token,
-            nonote_token,
-            seq_len=self.config.max_seq_len,
-            eos_token=self.config.eos_token,
-            context=self.encoder.generate(data),
-        )
 
         t0 = perf_counter()
         # Generate context with encoder. The encoder and decoder may run in
