@@ -49,8 +49,14 @@ class Staff2Score:
         )
 
         t0 = perf_counter()
-        # Generate context with encoder
+        # Generate context with encoder. The encoder and decoder may run in
+        # different precisions (e.g. the CoreML encoder is fp16 while the
+        # decoder stays on the fp32 CPU model), so cast the context to the
+        # dtype the decoder expects before handing it over.
         context = self.encoder.generate(data)
+        context_dtype = np.float16 if self.decoder.fp16 else np.float32
+        if context.dtype != context_dtype:
+            context = context.astype(context_dtype)
 
         # Make a prediction using decoder
         out = self.decoder.generate(
