@@ -31,7 +31,7 @@ class Staff2Score:
         """
         Inference an image (NDArray) using Tromr.
         """
-        data = np.tile(_transform(image=image), (BATCH_SIZE, 1, 1, 1))
+        data = _transform(image=image)
         print(data.shape)
 
         # Create special tokens
@@ -68,7 +68,7 @@ class Staff2Score:
 
         eprint(f"Inference Time Tromr: {perf_counter()-t0}")
 
-        return out
+        return [out]
 
 
 class ConvertToArray:
@@ -81,7 +81,7 @@ class ConvertToArray:
 
     def __call__(self, image: NDArray) -> NDArray:
         arr = np.array(image) / 255
-        arr = arr[np.newaxis, np.newaxis, :, :]
+        arr = arr[:, np.newaxis, :, :]
         return self.normalize(arr).astype(np.float32)
 
 

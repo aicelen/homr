@@ -11,7 +11,7 @@ from homr.simple_logging import eprint
 from homr.staff_dewarping import StaffDewarping, dewarp_staff_image
 from homr.staff_parsing_tromr import parse_staff_tromr
 from homr.staff_regions import StaffRegions
-from homr.transformer.configs import Config, default_config
+from homr.transformer.configs import Config, default_config, BATCH_SIZE
 from homr.transformer.vocabulary import EncodedSymbol, remove_duplicated_symbols
 from homr.type_definitions import NDArray
 
@@ -289,9 +289,17 @@ def parse_staffs(
 
     # Run homr
     results = []
-    for staff_image, transformed_staff in zip(staff_images, transformed_staffs):
-        result_staff = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
-        results.append(result_staff)
+    for start in range(0, len(staff_images), BATCH_SIZE):
+        batch_images = np.stack(staff_images[start:start + BATCH_SIZE])
+        batch_staffs = transformed_staffs[start:start + BATCH_SIZE]
+
+        batch_results = parse_staff_tromr(
+            staff_images=batch_images,
+            staffs=batch_staffs,
+            config=config,
+        )
+
+        results.extend(batch_results)
 
     # Split staffs
     print(len(results))

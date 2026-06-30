@@ -7,12 +7,17 @@ from homr.type_definitions import NDArray
 inference: Staff2Score | None = None
 
 
-def parse_staff_tromr(staff_image: NDArray, staff: Staff, config: Config) -> list[EncodedSymbol]:
+def parse_staff_tromr(staff_images: NDArray, staffs: Staff, config: Config) -> list[list[EncodedSymbol]]:
     global inference  # noqa: PLW0603
     if inference is None:
         inference = Staff2Score(config)
 
-    result = inference.predict(staff_image)
-    if staff.is_grandstaff:
-        return result
-    return [r for r in result if r.position != "lower"]
+    batch_result = inference.predict(staff_images)
+
+    result = []
+    for idx, staff in enumerate(staffs):
+        if staff.is_grandstaff:
+            result.append(batch_result[idx])
+        else:
+            result.append([r for r in batch_result[idx] if r.position != "lower"])
+    return result
