@@ -53,8 +53,9 @@ def tromr_to_onnx(overwrite: bool) -> None:
         except Exception as e:
             eprint(f"Quantization failed. {e}")
         try:
-            fuse_decoder(path_to_decoder)
-            fuse_decoder(config.filepaths.decoder_path_fp16)
+            pass
+            #fuse_decoder(path_to_decoder)
+            #fuse_decoder(config.filepaths.decoder_path_fp16)
         except Exception as e:
             eprint(f"Fusing failed. {e}")
 

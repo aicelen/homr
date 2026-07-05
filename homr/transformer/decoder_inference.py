@@ -132,6 +132,9 @@ class ScoreDecoder:
 
             #print(len(slur_token)) # 1
 
+            print(f"step {step}; {rhythm_token[1], rhythm_token[0]}")
+
+
             if finished.all():
                 break
             
@@ -156,7 +159,9 @@ class ScoreDecoder:
             out_articulations = np.concatenate((out_articulations, articulation_sample), axis=1)
             out_slurs         = np.concatenate((out_slurs,         slur_sample),         axis=1)
 
-        print(f"{len(symbols[0])} symbols: {symbols}")
+        print(f"{len(symbols[0]), len(symbols[1]), len(symbols)}")
+        print(symbols[0])
+        print(symbols[1])
         return symbols
 
     def init_cache(self, cache_len: int = 0) -> tuple[list[NDArray], list[str], list[str]]:
@@ -187,10 +192,13 @@ class ScoreDecoder:
         return cache, input_names, output_names
 
 
-def detokenize(tokens: NDArray, vocab: dict[int, str]) -> list[str]:
-    toks = [vocab[tok.item()] for tok in tokens]
-    toks = [t for t in toks if t not in ("[BOS]", "[EOS]", "[PAD]")]
-    return toks
+def detokenize(tokens: NDArray, vocab: dict[int, str]) -> list[list[str]]:
+    result = []
+    for row in tokens:
+        toks = [vocab[tok.item()] for tok in row]
+        toks = [t for t in toks if t not in ("[BOS]", "[EOS]", "[PAD]")]
+        result.append(toks[0])
+    return result
 
 
 def get_decoder(config: Config) -> ScoreDecoder:

@@ -27,12 +27,17 @@ class Staff2Score:
                 "Failed to find tokenizer config" + self.config.filepaths.rhythmtokenizer
             )  # noqa: E501
 
-    def predict(self, image: NDArray) -> list[EncodedSymbol]:
+    def predict(self, image: NDArray, data = None) -> list[EncodedSymbol]:
         """
         Inference an image (NDArray) using Tromr.
         """
-        data = _transform(image=image)
+        if image is not None:
+            print("transforming")
+            data = _transform(image)
+            np.save("staff.npy", data)
+        
         print(data.shape)
+        # data = np.flip(data, axis=0)
 
         # Create special tokens
         start_token  = np.ones((BATCH_SIZE, 1), dtype=np.int64)
@@ -91,8 +96,21 @@ def test_transformer_on_image(path_to_img: str) -> None:
     out = model.predict(np.array(image))
     eprint(out)
 
+def test_transformer_on_npy(path_to_npy: str) -> None:
+    """
+    Tests the transformer on an image and prints the results.
+    Args:
+        path_to_img(str): Path to the image to test
+    """
+
+    model = Staff2Score(Config())
+    data = np.load(path_to_npy)
+    print(data.shape)
+    out = model.predict(None, data)
+    eprint(out)
+
 
 if __name__ == "__main__":
     import sys
 
-    test_transformer_on_image(sys.argv[1])
+    test_transformer_on_npy(sys.argv[1])

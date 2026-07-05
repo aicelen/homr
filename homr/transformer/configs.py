@@ -7,7 +7,7 @@ from homr.transformer.vocabulary import Vocabulary
 workspace = os.path.join(os.path.dirname(__file__))
 root_dir = os.getcwd()
 
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 
 
 class FilePaths:
