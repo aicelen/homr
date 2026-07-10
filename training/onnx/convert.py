@@ -101,6 +101,8 @@ def convert_encoder(overwrite: bool) -> str | None:
     # Prepare input tensor
     input_tensor = torch.randn(BATCH_SIZE, 1, config.max_height, config.max_width).float()
 
+    dynamic_axes = {"input": {0: "batch_size"}}
+
     # Export to onnx
     torch.onnx.export(
         model,
@@ -111,6 +113,7 @@ def convert_encoder(overwrite: bool) -> str | None:
         do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
+        dynamic_axes=dynamic_axes,
     )
 
     return path_out
@@ -155,7 +158,16 @@ def convert_decoder(overwrite: bool) -> str | None:
     cache = kv_cache
     context = torch.randn((BATCH_SIZE, 1280, config.encoder_dim)).float()
 
-    dynamic_axes["context"] = {1: "cache_exists"}
+    dynamic_axes["context"] = {0: "batch_size", 1: "cache_exists"}
+    
+    # Batch size
+    dynamic_axes["rhythms"] = {0: "batch_size"}
+    dynamic_axes["pitchs"] = {0: "batch_size"}
+    dynamic_axes["lifts"] = {0: "batch_size"}
+    dynamic_axes["articulations"] = {0: "batch_size"}
+    dynamic_axes["slurs"] = {0: "batch_size"}
+    dynamic_axes["cache_len"] = {0: "batch_size"}
+
 
     torch.onnx.export(
         wrapped_model,

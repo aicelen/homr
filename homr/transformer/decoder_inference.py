@@ -57,11 +57,11 @@ class ScoreDecoder:
 
         b, t = start_tokens.shape
 
-        out_rhythm = start_tokens
-        out_pitch = nonote_tokens
-        out_lift = nonote_tokens
-        out_articulations = nonote_tokens
-        out_slurs = nonote_tokens
+        out_rhythm = start_tokens.copy()
+        out_pitch = nonote_tokens.copy()
+        out_lift = nonote_tokens.copy()
+        out_articulations = nonote_tokens.copy()
+        out_slurs = nonote_tokens.copy()
         cache, kv_input_names, kv_output_names = self.init_cache()
         output_names = self.output_names + kv_output_names
         context = kwargs["context"]
@@ -69,14 +69,15 @@ class ScoreDecoder:
         finished = np.zeros(BATCH_SIZE, dtype=bool)
 
         symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
+        
+        cur_batch_size = BATCH_SIZE
+        x_lift = out_lift[:, -1:]  # for all: shape=(1,1)
+        x_pitch = out_pitch[:, -1:]
+        x_rhythm = out_rhythm[:, -1:]
+        x_articulations = out_articulations[:, -1:]
+        x_slurs = out_slurs[:, -1:]
 
         for step in range(self.max_seq_len):
-            x_lift = out_lift[:, -1:]  # for all: shape=(1,1)
-            x_pitch = out_pitch[:, -1:]
-            x_rhythm = out_rhythm[:, -1:]
-            x_articulations = out_articulations[:, -1:]
-            x_slurs = out_slurs[:, -1:]
-
             # after the first step we don't pass the full context into the decoder
             # x_transformers uses [:, :0] to split the context
             # which caused a Reshape error when loading the onnx model
@@ -89,7 +90,7 @@ class ScoreDecoder:
             self.io_binding.bind_cpu_input("articulations", x_articulations)
             self.io_binding.bind_cpu_input("slurs", x_slurs)
             self.io_binding.bind_cpu_input("context", context)
-            self.io_binding.bind_cpu_input("cache_len", np.full(BATCH_SIZE, step, dtype=np.int64))
+            self.io_binding.bind_cpu_input("cache_len", np.full(cur_batch_size, step, dtype=np.int64))
             for name, cache_val in zip(kv_input_names, cache, strict=True):
                 self.io_binding.bind_ortvalue_input(name, cache_val)
 
@@ -112,8 +113,6 @@ class ScoreDecoder:
             articulationsp = outputs[4].numpy()
             slursp = outputs[5].numpy()
 
-            #print(slursp.shape) #1,1,5
-
             rhythm_sample       = rhythmsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             pitch_sample        = pitchsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             lift_sample         = liftsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
@@ -121,19 +120,12 @@ class ScoreDecoder:
             slur_sample         = slursp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
             position_sample     = positionsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
 
-            #print(slur_sample.shape) # 1,1
-
             lift_token = detokenize(lift_sample, self.inv_lift_vocab)
             pitch_token = detokenize(pitch_sample, self.inv_pitch_vocab)
             rhythm_token = detokenize(rhythm_sample, self.inv_rhythm_vocab)
             articulation_token = detokenize(articulation_sample, self.inv_articulation_vocab)
             slur_token = detokenize(slur_sample, self.inv_slur_vocab)
             position_token = detokenize(position_sample, self.inv_position_vocab)
-
-            #print(len(slur_token)) # 1
-
-            print(f"step {step}; {rhythm_token[1], rhythm_token[0]}")
-
 
             if finished.all():
                 break
@@ -153,15 +145,11 @@ class ScoreDecoder:
                     )
                     symbols[j].append(symbol)
 
-            out_lift          = np.concatenate((out_lift,          lift_sample),         axis=1)
-            out_pitch         = np.concatenate((out_pitch,         pitch_sample),        axis=1)
-            out_rhythm        = np.concatenate((out_rhythm,        rhythm_sample),       axis=1)
-            out_articulations = np.concatenate((out_articulations, articulation_sample), axis=1)
-            out_slurs         = np.concatenate((out_slurs,         slur_sample),         axis=1)
-
-        print(f"{len(symbols[0]), len(symbols[1]), len(symbols)}")
-        print(symbols[0])
-        print(symbols[1])
+                    x_lift[j, 0] = lift_sample[j, 0]
+                    x_pitch[j, 0] = pitch_sample[j, 0]
+                    x_rhythm[j, 0] = rhythm_sample[j, 0]
+                    x_articulations[j, 0] = articulation_sample[j, 0]
+                    x_slurs[j, 0] = slur_sample[j, 0]
         return symbols
 
     def init_cache(self, cache_len: int = 0) -> tuple[list[NDArray], list[str], list[str]]:
