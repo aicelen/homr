@@ -7,7 +7,7 @@ from homr.transformer.vocabulary import Vocabulary
 workspace = os.path.join(os.path.dirname(__file__))
 root_dir = os.getcwd()
 
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 
 
 class FilePaths:
@@ -88,6 +88,8 @@ class Config:
     def __init__(self) -> None:
         self.vocab = Vocabulary()
         self.filepaths = FilePaths()
+        self.target_batch_size = 8
+        self.cur_batch_size = 8
         self.channels = 1
         self.patch_size = 16
         self.max_height = 256

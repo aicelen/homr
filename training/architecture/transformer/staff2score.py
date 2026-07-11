@@ -7,7 +7,7 @@ import torch
 from PIL import Image
 
 from homr.simple_logging import eprint
-from homr.transformer.configs import Config
+from homr.transformer.configs import Config, default_config
 from homr.transformer.vocabulary import EncodedSymbol
 from homr.type_definitions import NDArray
 from training.architecture.transformer.tromr_arch import TrOMR
@@ -47,6 +47,9 @@ class Staff2Score:
             raise RuntimeError("Failed to find tokenizer config" + config.filepaths.rhythmtokenizer)
 
     def predict(self, image: NDArray) -> list[EncodedSymbol]:
+        print(image.shape[0])
+        default_config.cur_batch_size = image.shape[0]
+
         image = prepare_for_tensor(image)
         tensor = ndarray_to_tensor(image)
         tensor = pad_to_3_dims(tensor)

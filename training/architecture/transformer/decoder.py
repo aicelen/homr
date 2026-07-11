@@ -6,7 +6,7 @@ from torch import nn
 
 import numpy as np
 
-from homr.transformer.configs import Config, BATCH_SIZE
+from homr.transformer.configs import Config, default_config
 from homr.transformer.vocabulary import EncodedSymbol, has_rhythm_symbol_a_position
 from training.architecture.transformer.custom_x_transformer import (
     AbsolutePositionalEmbedding,
@@ -296,7 +296,7 @@ class ScoreDecoder(nn.Module):
         mask = kwargs.pop("mask", None)
         context_first = kwargs.pop("context")
         context_later = context_first[:, :0]
-        finished = np.zeros(BATCH_SIZE, dtype=bool)
+        finished = np.zeros(default_config.cur_batch_size, dtype=bool)
 
         if mask is None:
             # the mask is always (True, True) because the x_ are always (1, 1)
@@ -304,7 +304,7 @@ class ScoreDecoder(nn.Module):
             # the information about the rest of the tokens gets passed via the kv cache
             mask = torch.ones((1, 1), dtype=torch.bool, device=self.device)
 
-        symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
+        symbols: list[list[EncodedSymbol]] = [[] for _ in range(default_config.cur_batch_size)]
 
         cache = init_cache(0, self.device)[0]
 
@@ -352,7 +352,7 @@ class ScoreDecoder(nn.Module):
             if finished.all():
                 break
             
-            for j in range(BATCH_SIZE):
+            for j in range(default_config.cur_batch_size):
                 if rhythm_sample[j][0] == self.eos_token:
                     finished[j] = 1
                 elif not finished[j]:
@@ -588,10 +588,10 @@ def init_cache(
     output_names = []
     dynamic = {}
     for i in range(32):
-        cache.append(torch.zeros((BATCH_SIZE, 8, cache_len, 64), dtype=torch.float32).to(device))
+        cache.append(torch.zeros((default_config.cur_batch_size, 8, cache_len, 64), dtype=torch.float32).to(device))
         input_names.append(f"cache_in{i}")
         output_names.append(f"cache_out{i}")
-        dynamic[f"cache_in{i}"] = {0: "batch_size", 2: "seq_len"}
+        dynamic[f"cache_in{i}"] = {0: "default_config.cur_batch_size", 2: "seq_len"}
     return cache, input_names, output_names, dynamic, cache_len
 
 
