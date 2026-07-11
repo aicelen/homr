@@ -125,7 +125,6 @@ def convert_decoder(overwrite: bool) -> str | None:
     """
     config = Config()
     model = get_score_wrapper(config, attn_flash=False)
-    model.eval()
 
     path_out = config.filepaths.decoder_path
 
@@ -139,6 +138,8 @@ def convert_decoder(overwrite: bool) -> str | None:
         torch.load(r"decoder_weights.pt", weights_only=True, map_location=torch.device("cpu")),
         strict=True,
     )
+
+    model.eval()
 
     # Using a wrapper model with a custom forward() function
     wrapped_model = DecoderWrapper(model)

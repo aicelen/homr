@@ -45,112 +45,146 @@ class ScoreDecoder:
         ]
 
     def generate(
-        self,
-        start_tokens: NDArray,
-        nonote_tokens: NDArray,
-        **kwargs: Any,
-    ) -> list[EncodedSymbol]:
-        num_dims = len(start_tokens.shape)
+            self,
+            start_tokens: NDArray,
+            nonote_tokens: NDArray,
+            **kwargs: Any,
+        ) -> list[EncodedSymbol]:
+            num_dims = len(start_tokens.shape)
 
-        if num_dims == 1:
-            start_tokens = start_tokens[None, :]
+            if num_dims == 1:
+                start_tokens = start_tokens[None, :]
 
-        b, t = start_tokens.shape
-
-        out_rhythm = start_tokens.copy()
-        out_pitch = nonote_tokens.copy()
-        out_lift = nonote_tokens.copy()
-        out_articulations = nonote_tokens.copy()
-        out_slurs = nonote_tokens.copy()
-        cache, kv_input_names, kv_output_names = self.init_cache()
-        output_names = self.output_names + kv_output_names
-        context = kwargs["context"]
-        context_reduced = kwargs["context"][:, :1]
-        finished = np.zeros(BATCH_SIZE, dtype=bool)
-
-        symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
-        
-        cur_batch_size = BATCH_SIZE
-        x_lift = out_lift[:, -1:]  # for all: shape=(1,1)
-        x_pitch = out_pitch[:, -1:]
-        x_rhythm = out_rhythm[:, -1:]
-        x_articulations = out_articulations[:, -1:]
-        x_slurs = out_slurs[:, -1:]
-
-        for step in range(self.max_seq_len):
-            # after the first step we don't pass the full context into the decoder
-            # x_transformers uses [:, :0] to split the context
-            # which caused a Reshape error when loading the onnx model
-            context = context if step == 0 else context_reduced
-
-            # Bind Inputs
-            self.io_binding.bind_cpu_input("rhythms", x_rhythm)
-            self.io_binding.bind_cpu_input("pitchs", x_pitch)
-            self.io_binding.bind_cpu_input("lifts", x_lift)
-            self.io_binding.bind_cpu_input("articulations", x_articulations)
-            self.io_binding.bind_cpu_input("slurs", x_slurs)
-            self.io_binding.bind_cpu_input("context", context)
-            self.io_binding.bind_cpu_input("cache_len", np.full(cur_batch_size, step, dtype=np.int64))
-            for name, cache_val in zip(kv_input_names, cache, strict=True):
-                self.io_binding.bind_ortvalue_input(name, cache_val)
-
-            # Bind Outputs
-            for name in output_names:
-                self.io_binding.bind_output(name, "cuda" if self.use_gpu else "cpu", self.device_id)
-
-            # Run inference
-            self.net.run_with_iobinding(iobinding=self.io_binding)
-
-            # Get outputs
-            outputs = self.io_binding.get_outputs()
-            cache = outputs[6:]
-
-            # Greedy decoding: pick the highest logit directly for each output
-            rhythmsp = outputs[0].numpy()
-            pitchsp = outputs[1].numpy()
-            liftsp = outputs[2].numpy()
-            positionsp = outputs[3].numpy()
-            articulationsp = outputs[4].numpy()
-            slursp = outputs[5].numpy()
-
-            rhythm_sample       = rhythmsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
-            pitch_sample        = pitchsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
-            lift_sample         = liftsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
-            articulation_sample = articulationsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
-            slur_sample         = slursp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
-            position_sample     = positionsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
-
-            lift_token = detokenize(lift_sample, self.inv_lift_vocab)
-            pitch_token = detokenize(pitch_sample, self.inv_pitch_vocab)
-            rhythm_token = detokenize(rhythm_sample, self.inv_rhythm_vocab)
-            articulation_token = detokenize(articulation_sample, self.inv_articulation_vocab)
-            slur_token = detokenize(slur_sample, self.inv_slur_vocab)
-            position_token = detokenize(position_sample, self.inv_position_vocab)
-
-            if finished.all():
-                break
+            out_rhythm = start_tokens.copy()
+            out_pitch = nonote_tokens.copy()
+            out_lift = nonote_tokens.copy()
+            out_articulations = nonote_tokens.copy()
+            out_slurs = nonote_tokens.copy()
             
-            for j in range(BATCH_SIZE):
-                if rhythm_sample[j][0] == self.eos_token:
-                    finished[j] = 1
-                elif not finished[j]:
+            # Initialize cache as numpy arrays so they can be dynamically sliced
+            cache_ort, kv_input_names, kv_output_names = self.init_cache()
+            cache_active = [c.numpy() for c in cache_ort]
+            
+            output_names = self.output_names + kv_output_names
+            
+            context_active = kwargs["context"]
+            context_reduced_active = kwargs["context"][:, :1]
+
+            symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
+            
+            # Track which batch indices are still generating
+            active_indices = list(range(BATCH_SIZE))
+
+            # Initial inputs
+            x_lift_active = out_lift[:, -1:]
+            x_pitch_active = out_pitch[:, -1:]
+            x_rhythm_active = out_rhythm[:, -1:]
+            x_articulations_active = out_articulations[:, -1:]
+            x_slurs_active = out_slurs[:, -1:]
+
+            device_type = "cuda" if self.use_gpu else "cpu"
+
+            for step in range(self.max_seq_len):
+                if not active_indices:
+                    break
+                    
+                cur_batch_size = len(active_indices)
+                current_context = context_active if step == 0 else context_reduced_active
+
+                # Bind Standard Inputs
+                self.io_binding.bind_cpu_input("rhythms", x_rhythm_active)
+                self.io_binding.bind_cpu_input("pitchs", x_pitch_active)
+                self.io_binding.bind_cpu_input("lifts", x_lift_active)
+                self.io_binding.bind_cpu_input("articulations", x_articulations_active)
+                self.io_binding.bind_cpu_input("slurs", x_slurs_active)
+                self.io_binding.bind_cpu_input("context", current_context)
+                self.io_binding.bind_cpu_input("cache_len", np.full(cur_batch_size, step, dtype=np.int64))
+                
+                # Re-bind Cache (moves sliced numpy arrays back to OrtValues on the correct device)
+                for name, cache_arr in zip(kv_input_names, cache_active, strict=True):
+                    ort_val = ort.OrtValue.ortvalue_from_numpy(cache_arr, device_type, self.device_id)
+                    self.io_binding.bind_ortvalue_input(name, ort_val)
+
+                # Bind Outputs
+                for name in output_names:
+                    self.io_binding.bind_output(name, device_type, self.device_id)
+
+                # Run inference
+                self.net.run_with_iobinding(iobinding=self.io_binding)
+
+                # Get outputs
+                outputs = self.io_binding.get_outputs()
+                
+                # The new cache for the currently active sequences
+                new_cache_active = [out.numpy() for out in outputs[6:]]
+
+                # Greedy decoding
+                rhythmsp = outputs[0].numpy()
+                pitchsp = outputs[1].numpy()
+                liftsp = outputs[2].numpy()
+                positionsp = outputs[3].numpy()
+                articulationsp = outputs[4].numpy()
+                slursp = outputs[5].numpy()
+
+                rhythm_samples       = rhythmsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+                pitch_samples        = pitchsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+                lift_samples         = liftsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+                articulation_samples = articulationsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+                slur_samples         = slursp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+                position_samples     = positionsp[:, -1, :].argmax(axis=-1).reshape(-1, 1)
+
+                # Determine which of the *current* active sequences are surviving this step
+                keep_mask = (rhythm_samples[:, 0] != self.eos_token)
+
+                # Process symbols mapped back to their original batch index
+                for i, orig_idx in enumerate(active_indices):
+                    if not keep_mask[i]:
+                        continue  # Sequence generated EOS on this exact step
+
+                    lift_token = detokenize(lift_samples[i:i+1], self.inv_lift_vocab)[0]
+                    pitch_token = detokenize(pitch_samples[i:i+1], self.inv_pitch_vocab)[0]
+                    rhythm_token = detokenize(rhythm_samples[i:i+1], self.inv_rhythm_vocab)[0]
+                    articulation_token = detokenize(articulation_samples[i:i+1], self.inv_articulation_vocab)[0]
+                    slur_token = detokenize(slur_samples[i:i+1], self.inv_slur_vocab)[0]
+                    position_token = detokenize(position_samples[i:i+1], self.inv_position_vocab)[0]
+
                     symbol = EncodedSymbol(
-                        rhythm=rhythm_token[j],
-                        pitch=pitch_token[j],
-                        lift=lift_token[j],
-                        articulation=articulation_token[j],
-                        slur=slur_token[j],
-                        position=position_token[j],
+                        rhythm=rhythm_token,
+                        pitch=pitch_token,
+                        lift=lift_token,
+                        articulation=articulation_token,
+                        slur=slur_token,
+                        position=position_token,
                         coordinates=None,
                     )
-                    symbols[j].append(symbol)
+                    symbols[orig_idx].append(symbol)
 
-                    x_lift[j, 0] = lift_sample[j, 0]
-                    x_pitch[j, 0] = pitch_sample[j, 0]
-                    x_rhythm[j, 0] = rhythm_sample[j, 0]
-                    x_articulations[j, 0] = articulation_sample[j, 0]
-                    x_slurs[j, 0] = slur_sample[j, 0]
-        return symbols
+                # Break early if all remaining sequences just hit EOS
+                if not keep_mask.any():
+                    break
+
+                # ---------------------------------------------------------
+                # RESIZE THE MODEL INPUTS FOR THE NEXT STEP
+                # ---------------------------------------------------------
+                
+                # Update the tracker with only the indices that survived
+                active_indices = [orig for i, orig in enumerate(active_indices) if keep_mask[i]]
+                
+                # Slice all arrays to reduce the batch dimension (removes finished paths)
+                x_rhythm_active = rhythm_samples[keep_mask]
+                x_pitch_active = pitch_samples[keep_mask]
+                x_lift_active = lift_samples[keep_mask]
+                x_articulations_active = articulation_samples[keep_mask]
+                x_slurs_active = slur_samples[keep_mask]
+                
+                context_active = context_active[keep_mask]
+                context_reduced_active = context_reduced_active[keep_mask]
+                
+                # Slice the KV cache along the batch dimension
+                cache_active = [c[keep_mask] for c in new_cache_active]
+
+            return symbols
+
 
     def init_cache(self, cache_len: int = 0) -> tuple[list[NDArray], list[str], list[str]]:
         cache = []
