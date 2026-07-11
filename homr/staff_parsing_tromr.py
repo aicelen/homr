@@ -1,6 +1,6 @@
 from homr.model import Staff
 from homr.transformer.configs import Config
-from homr.transformer.staff2score import Staff2Score
+from training.architecture.transformer.staff2score import Staff2Score
 from homr.transformer.vocabulary import EncodedSymbol
 from homr.type_definitions import NDArray
 

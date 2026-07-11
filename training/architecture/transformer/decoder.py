@@ -4,6 +4,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import numpy as np
+
 from homr.transformer.configs import Config, BATCH_SIZE
 from homr.transformer.vocabulary import EncodedSymbol, has_rhythm_symbol_a_position
 from training.architecture.transformer.custom_x_transformer import (
@@ -294,6 +296,7 @@ class ScoreDecoder(nn.Module):
         mask = kwargs.pop("mask", None)
         context_first = kwargs.pop("context")
         context_later = context_first[:, :0]
+        finished = np.zeros(BATCH_SIZE, dtype=bool)
 
         if mask is None:
             # the mask is always (True, True) because the x_ are always (1, 1)
@@ -301,7 +304,7 @@ class ScoreDecoder(nn.Module):
             # the information about the rest of the tokens gets passed via the kv cache
             mask = torch.ones((1, 1), dtype=torch.bool, device=self.device)
 
-        symbols: list[EncodedSymbol] = []
+        symbols: list[list[EncodedSymbol]] = [[] for _ in range(BATCH_SIZE)]
 
         cache = init_cache(0, self.device)[0]
 
@@ -346,18 +349,23 @@ class ScoreDecoder(nn.Module):
             slur_token = detokenize(slur_sample, self.inv_slur_vocab)
             position_token = detokenize(position_sample, self.inv_position_vocab)
 
-            if rhythm_sample[0][0] == self.eos_token:
+            if finished.all():
                 break
-
-            symbol = EncodedSymbol(
-                rhythm=rhythm_token[0],
-                pitch=pitch_token[0],
-                lift=lift_token[0],
-                articulation=articulation_token[0],
-                slur=slur_token[0],
-                position=position_token[0],
-            )
-            symbols.append(symbol)
+            
+            for j in range(BATCH_SIZE):
+                if rhythm_sample[j][0] == self.eos_token:
+                    finished[j] = 1
+                elif not finished[j]:
+                    symbol = EncodedSymbol(
+                        rhythm=rhythm_token[j],
+                        pitch=pitch_token[j],
+                        lift=lift_token[j],
+                        articulation=articulation_token[j],
+                        slur=slur_token[j],
+                        position=position_token[j],
+                        coordinates=None,
+                    )
+                    symbols[j].append(symbol)
 
             out_lift = torch.cat((out_lift, lift_sample), dim=-1)
             out_pitch = torch.cat((out_pitch, pitch_sample), dim=-1)
@@ -608,6 +616,9 @@ def get_score_wrapper(config: Config, attn_flash: bool = True) -> ScoreTransform
 
 
 def detokenize(tokens: torch.Tensor, vocab: Any) -> list[str]:
-    toks = [vocab[tok.item()] for tok in tokens]
-    toks = [t for t in toks if t not in ("[BOS]", "[EOS]", "[PAD]")]
-    return toks
+    result = []
+    for row in tokens:
+        toks = [vocab[tok.item()] for tok in row]
+        toks = [t for t in toks if t not in ("[BOS]", "[EOS]", "[PAD]")]
+        result.append(toks[0])
+    return result

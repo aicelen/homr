@@ -3,11 +3,12 @@ from typing import Any
 import torch
 from torch import nn
 
-from homr.transformer.configs import Config
+from homr.transformer.configs import Config, BATCH_SIZE
 from homr.transformer.vocabulary import EncodedSymbol
 from training.architecture.transformer.decoder import get_decoder
 from training.architecture.transformer.encoder import get_encoder
 
+from time import perf_counter
 
 class TrOMR(nn.Module):
     def __init__(self, config: Config):
@@ -50,12 +51,12 @@ class TrOMR(nn.Module):
 
     @torch.no_grad()
     def generate(self, x: torch.Tensor) -> list[EncodedSymbol]:
-        start_token = torch.tensor([[1]], dtype=torch.long, device=x.device)
-        nonote_token = torch.tensor([[0]], dtype=torch.long, device=x.device)
-
+        t0 = perf_counter()
+        start_token = torch.ones((BATCH_SIZE, 1), dtype=torch.long, device=x.device)
+        nonote_token = torch.zeros((BATCH_SIZE, 1), dtype=torch.long, device=x.device)
         context = self.encoder(x)
         out = self.decoder.generate(start_token, nonote_token, context=context)
-
+        print(perf_counter() - t0)
         return out
 
     def freeze_decoder(self) -> None:

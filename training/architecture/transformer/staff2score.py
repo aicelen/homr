@@ -50,7 +50,7 @@ class Staff2Score:
         image = prepare_for_tensor(image)
         tensor = ndarray_to_tensor(image)
         tensor = pad_to_3_dims(tensor)
-        imgs_tensor = tensor.float().unsqueeze(0).to(self.device)
+        imgs_tensor = tensor.float().unsqueeze(1).to(self.device)
         return self._generate(
             imgs_tensor,
         )
