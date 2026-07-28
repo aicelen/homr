@@ -5,7 +5,8 @@ import numpy as np
 from homr.transformer.configs import Config
 from homr.transformer.vocabulary import EncodedSymbol
 from homr.type_definitions import NDArray
-from trt.build_trt_decoder import BATCH_SIZE, CACHE_INPUT_NAMES, run
+from trt.build_trt_decoder import BATCH_SIZE, CACHE_INPUT_NAMES, DecoderSession
+from time import perf_counter
 
 
 class ScoreDecoder:
@@ -60,11 +61,12 @@ class ScoreDecoder:
         out_articulations = nonote_tokens
         out_slurs = nonote_tokens
 
-        cache = self.init_cache()
         context = _to_trt_batch(kwargs["context"], "context")
         context_reduced = context[:, :1]
 
         symbols: list[EncodedSymbol] = []
+
+        model = DecoderSession("decoder.trt")
 
         for step in range(self.max_seq_len):
             step_context = context if step == 0 else context_reduced
@@ -77,14 +79,12 @@ class ScoreDecoder:
                 "context": step_context,
                 "cache_len": np.array([step], dtype=np.int64),
             }
-            inputs.update({name: cache[name] for name in CACHE_INPUT_NAMES})
-
-            outputs = run(inputs, self.engine_path)
-            cache = {
-                input_name: outputs[f"cache_out{i}"]
-                for i, input_name in enumerate(CACHE_INPUT_NAMES)
-            }
-
+            t0  = perf_counter()
+            if step == 0:
+                outputs = model.step(inputs, context, step)
+            else:
+                outputs = model.step(inputs, context_reduced, step)
+            print(perf_counter() - t0)
             rhythmsp = outputs["out_rhythms"]
             pitchsp = outputs["out_pitchs"]
             liftsp = outputs["out_lifts"]

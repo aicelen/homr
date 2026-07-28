@@ -16,7 +16,7 @@ from homr.transformer.configs import default_config
 
 
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 NUM_CACHE_TENSORS = 32
 MAX_SEQ_LEN = 608
 MAX_CONTEXT_LEN = 1280
@@ -156,7 +156,7 @@ def build_engine_from_onnx(
     onnx_file_path: str,
     engine_file_path: str | None = None,
     fp16_mode: bool = False,
-    max_workspace_size: int = 1 << 30,
+    max_workspace_size: int = 1 << 32,
 ) -> bytes | None:
     """Parse the decoder ONNX model and optionally save a serialized engine."""
     builder = trt.Builder(TRT_LOGGER)
@@ -203,140 +203,119 @@ def load_engine(engine_file_path: str) -> trt.ICudaEngine:
     return engine
 
 
-def run(
-    inputs: Mapping[str, np.ndarray], engine_path: str = "decoder.trt"
-) -> dict[str, np.ndarray]:
-    """Run exactly one decoder step and return every engine output.
+class DecoderSession:
+    """Holds engine state + GPU-resident KV cache across decode steps."""
 
-    ``inputs`` must contain the five token tensors, ``context``, ``cache_len``,
-    and ``cache_in0`` through ``cache_in31``.  The returned dictionary is keyed
-    by the ONNX output names, including all ``out_*`` and ``cache_out*``
-    tensors (and ``attention`` when present in the model).
-    """
-    engine = load_engine(engine_path)
-    context = engine.create_execution_context()
-
-    engine_input_names = [
-        engine.get_tensor_name(i)
-        for i in range(engine.num_io_tensors)
-        if engine.get_tensor_mode(engine.get_tensor_name(i)) == trt.TensorIOMode.INPUT
-    ]
-    missing_engine_inputs = set(INPUT_NAMES) - set(engine_input_names)
-    if missing_engine_inputs:
-        raise RuntimeError(f"TensorRT engine is missing inputs: {sorted(missing_engine_inputs)}")
-    missing = set(INPUT_NAMES) - set(inputs)
-    unexpected = set(inputs) - set(INPUT_NAMES)
-    if missing or unexpected:
-        raise ValueError(
-            f"Invalid decoder inputs; missing={sorted(missing)}, unexpected={sorted(unexpected)}"
-        )
-
-    device_buffers: dict[str, object] = {}
-    host_outputs: dict[str, np.ndarray] = {}
-    stream = None
-    try:
-        err, stream = cudart.cudaStreamCreate()
+    def __init__(self, engine_path: str = "decoder.trt"):
+        self.engine = load_engine(engine_path)
+        self.context = self.engine.create_execution_context()
+        err, self.stream = cudart.cudaStreamCreate()
         _check(err)
-        host_inputs: dict[str, np.ndarray] = {}
-        for name in engine_input_names:
-            value = np.asarray(inputs[name])
-            if name in TOKEN_INPUT_NAMES or name == "cache_len":
-                expected_shape = (BATCH_SIZE, 1) if name in TOKEN_INPUT_NAMES else (1,)
-                if value.shape != expected_shape:
-                    raise ValueError(f"{name} must have shape {expected_shape}, got {value.shape}")
-            elif name in CACHE_INPUT_NAMES and (
-                value.ndim != 4
-                or value.shape[0] != BATCH_SIZE
-                or value.shape[1] != 8
-                or value.shape[3] != 64
-            ):
-                raise ValueError(
-                    f"{name} must have shape ({BATCH_SIZE}, 8, seq_len, 64), got {value.shape}"
-                )
-            elif name in CACHE_INPUT_NAMES:
-                max_cache_len = (
-                    MAX_CONTEXT_LEN + MAX_SEQ_LEN
-                    if _is_cross_attention_cache(name)
-                    else MAX_SEQ_LEN
-                )
-                if value.shape[2] > max_cache_len:
-                    raise ValueError(
-                        f"{name} seq_len must be <= {max_cache_len}, got {value.shape[2]}"
-                    )
-            elif name == "context" and (
-                value.ndim != 3 or value.shape[0] != BATCH_SIZE or value.shape[2] != 512
-            ):
-                raise ValueError(
-                    f"context must have shape ({BATCH_SIZE}, cache_exists, 512), got {value.shape}"
-                )
 
-            dtype = trt.nptype(engine.get_tensor_dtype(name))
-            host_input = np.ascontiguousarray(value, dtype=dtype)
-            host_inputs[name] = host_input
-            if not context.set_input_shape(name, host_input.shape):
-                raise RuntimeError(
-                    f"TensorRT rejected input shape for {name}: {host_input.shape}"
-                )
-            err, device_buffer = cudart.cudaMalloc(max(1, host_input.nbytes))
+        # name -> (device_ptr, shape, dtype)  -- lives entirely on GPU
+        self.cache: dict[str, tuple[int, tuple[int, ...], np.dtype]] = {}
+        self._init_empty_cache()
+
+    def _init_empty_cache(self) -> None:
+        for name in CACHE_INPUT_NAMES:
+            shape = (BATCH_SIZE, 8, 0, 64)
+            dtype = trt.nptype(self.engine.get_tensor_dtype(name))
+            err, ptr = cudart.cudaMalloc(1)  # zero-length placeholder
             _check(err)
-            device_buffers[name] = device_buffer
+            self.cache[name] = (ptr, shape, dtype)
 
-        for name, value in host_inputs.items():
-            if value.nbytes:
-                _check(
-                    cudart.cudaMemcpyAsync(
-                        device_buffers[name],
-                        value.ctypes.data,
-                        value.nbytes,
-                        cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
-                        stream,
-                    )
-                )
-            context.set_tensor_address(name, int(device_buffers[name]))
+    def step(
+        self,
+        token_inputs: Mapping[str, np.ndarray],  # rhythms/pitchs/.../slurs
+        context_arr: np.ndarray,
+        cache_len: np.ndarray,
+    ) -> dict[str, np.ndarray]:
+        device_buffers: dict[str, int] = {}
+        host_outputs: dict[str, np.ndarray] = {}
+        new_cache_ptrs: dict[str, tuple[int, tuple[int, ...], np.dtype]] = {}
 
-        output_names = [
-            engine.get_tensor_name(i)
-            for i in range(engine.num_io_tensors)
-            if engine.get_tensor_mode(engine.get_tensor_name(i)) == trt.TensorIOMode.OUTPUT
-        ]
-        for name in output_names:
-            shape = tuple(context.get_tensor_shape(name))
-            if any(dim < 0 for dim in shape):
-                raise RuntimeError(f"Output shape for {name} is still dynamic: {shape}")
-            output = np.empty(shape, dtype=trt.nptype(engine.get_tensor_dtype(name)))
-            host_outputs[name] = output
-            err, device_buffer = cudart.cudaMalloc(max(1, output.nbytes))
-            _check(err)
-            device_buffers[name] = device_buffer
-            context.set_tensor_address(name, int(device_buffer))
+        try:
+            # --- small inputs: host -> device as usual ---
+            for name, value in token_inputs.items():
+                dtype = trt.nptype(self.engine.get_tensor_dtype(name))
+                host_arr = np.ascontiguousarray(value, dtype=dtype)
+                self.context.set_input_shape(name, host_arr.shape)
+                err, ptr = cudart.cudaMalloc(max(1, host_arr.nbytes))
+                _check(err)
+                device_buffers[name] = ptr
+                if host_arr.nbytes:
+                    _check(cudart.cudaMemcpyAsync(
+                        ptr, host_arr.ctypes.data, host_arr.nbytes,
+                        cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, self.stream))
+                self.context.set_tensor_address(name, ptr)
 
-        if not context.execute_async_v3(stream):
-            raise RuntimeError("TensorRT decoder execution failed")
-        for name, output in host_outputs.items():
-            if output.nbytes:
-                _check(
-                    cudart.cudaMemcpyAsync(
-                        output.ctypes.data,
-                        device_buffers[name],
-                        output.nbytes,
-                        cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
-                        stream,
-                    )
-                )
-        _check(cudart.cudaStreamSynchronize(stream))
+            for name, value in (("context", context_arr), ("cache_len", cache_len)):
+                dtype = trt.nptype(self.engine.get_tensor_dtype(name))
+                host_arr = np.ascontiguousarray(value, dtype=dtype)
+                self.context.set_input_shape(name, host_arr.shape)
+                err, ptr = cudart.cudaMalloc(max(1, host_arr.nbytes))
+                _check(err)
+                device_buffers[name] = ptr
+                _check(cudart.cudaMemcpyAsync(
+                    ptr, host_arr.ctypes.data, host_arr.nbytes,
+                    cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, self.stream))
+                self.context.set_tensor_address(name, ptr)
+
+            # --- cache inputs: reuse the device pointer from last step's output ---
+            for name in CACHE_INPUT_NAMES:
+                ptr, shape, _ = self.cache[name]
+                self.context.set_input_shape(name, shape)
+                self.context.set_tensor_address(name, ptr)
+
+            # --- allocate outputs ---
+            for i in range(self.engine.num_io_tensors):
+                out_name = self.engine.get_tensor_name(i)
+                if self.engine.get_tensor_mode(out_name) != trt.TensorIOMode.OUTPUT:
+                    continue
+                shape = tuple(self.context.get_tensor_shape(out_name))
+                dtype = trt.nptype(self.engine.get_tensor_dtype(out_name))
+                nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
+                err, ptr = cudart.cudaMalloc(max(1, nbytes))
+                _check(err)
+
+                if out_name.startswith("cache_out"):
+                    # stays on GPU — becomes next step's cache_in, no D2H copy
+                    new_cache_ptrs[out_name] = (ptr, shape, dtype)
+                else:
+                    # small logits etc — worth bringing back to host
+                    device_buffers[out_name] = ptr
+                    host_outputs[out_name] = np.empty(shape, dtype=dtype)
+                self.context.set_tensor_address(out_name, ptr)
+
+            if not self.context.execute_async_v3(self.stream):
+                raise RuntimeError("TensorRT decoder execution failed")
+
+            for name, arr in host_outputs.items():
+                if arr.nbytes:
+                    _check(cudart.cudaMemcpyAsync(
+                        arr.ctypes.data, device_buffers[name], arr.nbytes,
+                        cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, self.stream))
+            _check(cudart.cudaStreamSynchronize(self.stream))
+
+        finally:
+            # free everything EXCEPT the cache buffers we're carrying forward
+            for name, ptr in device_buffers.items():
+                cudart.cudaFree(ptr)
+
+        # swap in the new cache, freeing the old cache buffers now that
+        # the step that consumed them has finished executing
+        for name, (old_ptr, _, _) in self.cache.items():
+            cudart.cudaFree(old_ptr)
+        cache_out_map = {f"cache_in{i}": f"cache_out{i}" for i in range(NUM_CACHE_TENSORS)}
+        for cache_in_name, cache_out_name in cache_out_map.items():
+            self.cache[cache_in_name] = new_cache_ptrs[cache_out_name]
+
         return host_outputs
-    finally:
-        for buffer in device_buffers.values():
-            cudart.cudaFree(buffer)
-        if stream is not None:
-            cudart.cudaStreamDestroy(stream)
 
-
-def run_inference(
-    inputs: Mapping[str, np.ndarray], engine_path: str = "decoder.trt"
-) -> dict[str, np.ndarray]:
-    """Backward-compatible descriptive alias for :func:`run`."""
-    return run(inputs, engine_path)
+    def close(self) -> None:
+        for ptr, _, _ in self.cache.values():
+            cudart.cudaFree(ptr)
+        cudart.cudaStreamDestroy(self.stream)
 
 
 def create() -> None:
