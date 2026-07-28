@@ -1,6 +1,5 @@
 import tensorrt as trt
 from homr.transformer.configs import default_config
-from homr.segmentation.config import segnet_path_onnx_fp16
 from cuda.bindings import runtime as cudart
 import numpy as np
 from time import perf_counter
@@ -37,9 +36,9 @@ def build_engine_from_onnx(onnx_file_path, engine_file_path=None,
     profile = builder.create_optimization_profile()
 
     profile.set_shape(input_tensor.name,
-                        min=(1, 3,320,320),
-                        opt=(8, 3,320,320),
-                        max=(64, 3,320,320))
+                        min=(1, 1,256,1280),
+                        opt=(8, 1,256,1280),
+                        max=(16, 1,256,1280))
     config.add_optimization_profile(profile)
 
     # Build the serialized engine
@@ -112,17 +111,17 @@ def run_inference(path: str, input_array: np.ndarray) -> np.ndarray:
     return host_output
 
 def create():
-    onnx_path = segnet_path_onnx_fp16
-    engine_path = "segnet.trt"
+    onnx_path = default_config.filepaths.encoder_path_fp16
+    engine_path = "encoder.trt"
 
     # Build (or rebuild) the engine
     build_engine_from_onnx(onnx_path, engine_path)
 
 def run():
-    dummy_input_64 = np.random.rand(64, 3, 320, 320).astype(np.float16)
+    dummy_input_16 = np.random.rand(16, 1, 256, 1280).astype(np.float16)
     for i in range(8):
         t0  = perf_counter()
-        output = run_inference("segnet.trt", dummy_input_64)
+        output = run_inference("encoder.trt", dummy_input_16)
         print(perf_counter() - t0)
 
 
