@@ -583,7 +583,7 @@ def init_cache(
         cache.append(torch.zeros((1, 8, cache_len, 64), dtype=torch.float32).to(device))
         input_names.append(f"cache_in{i}")
         output_names.append(f"cache_out{i}")
-        dynamic[f"cache_in{i}"] = {2: "seq_len"}
+        dynamic[f"cache_in{i}"] = {2: f"cache_in{i}_seq_len"}
     return cache, input_names, output_names, dynamic, cache_len
 
 

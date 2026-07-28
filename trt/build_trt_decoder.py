@@ -18,6 +18,7 @@ TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
 BATCH_SIZE = 16
 NUM_CACHE_TENSORS = 32
 MAX_SEQ_LEN = 608
+MAX_CONTEXT_LEN = 1280
 
 TOKEN_INPUT_NAMES = (
     "rhythms",
@@ -35,6 +36,27 @@ def _check(err: object) -> None:
         err = err[0]
     if err != cudart.cudaError_t.cudaSuccess:
         raise RuntimeError(f"CUDA error: {err}")
+
+
+def _is_cross_attention_cache(name: str) -> bool:
+    cache_index = int(name.removeprefix("cache_in"))
+    return cache_index % 4 in (2, 3)
+
+
+def _rename_dynamic_cache_dimensions(network: trt.INetworkDefinition) -> None:
+    """Avoid TensorRT treating every cache length as one shared dimension."""
+    for i in range(network.num_inputs):
+        tensor = network.get_input(i)
+        try:
+            if tensor.name in CACHE_INPUT_NAMES:
+                tensor.set_dimension_name(2, f"{tensor.name}_seq_len")
+            elif tensor.name == "context":
+                tensor.set_dimension_name(1, "context_len")
+        except AttributeError as exc:
+            raise RuntimeError(
+                "TensorRT Python bindings do not support renaming dynamic "
+                "dimensions; rebuild the ONNX with unique cache axis names."
+            ) from exc
 
 
 def _set_decoder_profile(
@@ -56,17 +78,20 @@ def _set_decoder_profile(
     profile.set_shape(
         "context",
         (BATCH_SIZE, 1, 512),
-        (BATCH_SIZE, 1280, 512),
-        (BATCH_SIZE, 1280, 512),
+        (BATCH_SIZE, MAX_CONTEXT_LEN, 512),
+        (BATCH_SIZE, MAX_CONTEXT_LEN, 512),
     )
     profile.set_shape("cache_len", (1,), (1,), (1,))
 
     for name in CACHE_INPUT_NAMES:
+        max_cache_len = (
+            MAX_CONTEXT_LEN + MAX_SEQ_LEN if _is_cross_attention_cache(name) else MAX_SEQ_LEN
+        )
         profile.set_shape(
             name,
             (BATCH_SIZE, 8, 0, 64),
             (BATCH_SIZE, 8, 1, 64),
-            (BATCH_SIZE, 8, MAX_SEQ_LEN, 64),
+            (BATCH_SIZE, 8, max_cache_len, 64),
         )
 
 
@@ -87,6 +112,8 @@ def build_engine_from_onnx(
             for error in range(parser.num_errors):
                 print(parser.get_error(error))
             return None
+
+    _rename_dynamic_cache_dimensions(network)
 
     config = builder.create_builder_config()
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, max_workspace_size)
@@ -170,6 +197,16 @@ def run(
                 raise ValueError(
                     f"{name} must have shape ({BATCH_SIZE}, 8, seq_len, 64), got {value.shape}"
                 )
+            elif name in CACHE_INPUT_NAMES:
+                max_cache_len = (
+                    MAX_CONTEXT_LEN + MAX_SEQ_LEN
+                    if _is_cross_attention_cache(name)
+                    else MAX_SEQ_LEN
+                )
+                if value.shape[2] > max_cache_len:
+                    raise ValueError(
+                        f"{name} seq_len must be <= {max_cache_len}, got {value.shape[2]}"
+                    )
             elif name == "context" and (
                 value.ndim != 3 or value.shape[0] != BATCH_SIZE or value.shape[2] != 512
             ):
@@ -180,7 +217,10 @@ def run(
             dtype = trt.nptype(engine.get_tensor_dtype(name))
             host_input = np.ascontiguousarray(value, dtype=dtype)
             host_inputs[name] = host_input
-            context.set_input_shape(name, host_input.shape)
+            if not context.set_input_shape(name, host_input.shape):
+                raise RuntimeError(
+                    f"TensorRT rejected input shape for {name}: {host_input.shape}"
+                )
             err, device_buffer = cudart.cudaMalloc(max(1, host_input.nbytes))
             _check(err)
             device_buffers[name] = device_buffer
@@ -265,4 +305,4 @@ def run_test():
 
 
 if __name__ == "__main__":
-    run_test()
+    create()

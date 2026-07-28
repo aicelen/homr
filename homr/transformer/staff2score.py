@@ -6,7 +6,7 @@ from PIL import Image
 
 from homr.simple_logging import eprint
 from homr.transformer.configs import Config
-from homr.transformer.decoder_inference import get_decoder
+from homr.transformer.decoder_inference_trt import get_decoder
 from homr.transformer.encoder_inference import Encoder
 from homr.transformer.vocabulary import EncodedSymbol
 from homr.type_definitions import NDArray
