@@ -20,7 +20,7 @@ from homr.segmentation.config import (
 )
 from homr.simple_logging import eprint
 from homr.type_definitions import NDArray
-
+from trt.build_trt_segnet import run_inference
 
 class Segnet:
     def __init__(self, use_gpu_inference: bool) -> None:
@@ -199,6 +199,7 @@ def inference(
     data: list[NDArray] = []
     batch: list[NDArray] = []
 
+
     for y_loop in range(0, max(h, win_size), step_size):
         y = min(y_loop, h - win_size)
         for x_loop in range(0, max(w, win_size), step_size):
@@ -208,16 +209,9 @@ def inference(
 
             batch.append(hop)
 
-            if len(batch) == batch_size:
-                batch_out = model.run(np.stack(batch, axis=0))
-                for out in batch_out:
-                    data.append(np.argmax(out, axis=0))
-                batch.clear()
-
-    if batch:
-        batch_out = model.run(np.stack(batch, axis=0))
-        for out in batch_out:
-            data.append(np.argmax(out, axis=0))
+    batch_out = run_inference("segnet.trt", np.stack(batch, axis=0))
+    for out in batch_out:
+        data.append(np.argmax(out, axis=0))
 
     eprint(f"Segnet Inference time: {perf_counter() - t0}; batch_size {batch_size}")
 
