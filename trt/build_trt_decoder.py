@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from time import perf_counter
 
 import numpy as np
+import onnx
 import tensorrt as trt
 from cuda.bindings import runtime as cudart
 from homr.transformer.configs import default_config
@@ -59,6 +60,62 @@ def _rename_dynamic_cache_dimensions(network: trt.INetworkDefinition) -> None:
             ) from exc
 
 
+def _set_static_dim(value_info: onnx.ValueInfoProto, axis: int, value: int) -> None:
+    dim = value_info.type.tensor_type.shape.dim[axis]
+    dim.ClearField("dim_param")
+    dim.dim_value = value
+
+
+def _clear_dim_name(value_info: onnx.ValueInfoProto, axis: int) -> None:
+    value_info.type.tensor_type.shape.dim[axis].ClearField("dim_param")
+
+
+def _decoder_onnx_for_tensorrt(onnx_file_path: str) -> bytes:
+    """Return decoder ONNX bytes with non-varying input axes made static.
+
+    The exported decoder keeps batch-size, token-length, and ``cache_len`` axes
+    symbolic even though this TensorRT runner only supports batch 16 one-token
+    steps with a one-element ``cache_len`` tensor. TensorRT can fail shape
+    analysis when those symbols do not drive any real dynamic shape relation, so
+    only the context/cache sequence axes are left dynamic. The fp16 ONNX also
+    contains inferred intermediate symbolic shapes from previous passes; those
+    annotations are not needed for parsing and can trigger TensorRT symbol-tie
+    assertions, so they are removed.
+    """
+    model = onnx.load(onnx_file_path)
+    del model.graph.value_info[:]
+    expected_inputs = set(INPUT_NAMES)
+    for graph_input in model.graph.input:
+        expected_inputs.discard(graph_input.name)
+        if graph_input.name in TOKEN_INPUT_NAMES:
+            _set_static_dim(graph_input, 0, BATCH_SIZE)
+            _set_static_dim(graph_input, 1, 1)
+        elif graph_input.name == "context":
+            _set_static_dim(graph_input, 0, BATCH_SIZE)
+            _clear_dim_name(graph_input, 1)
+        elif graph_input.name == "cache_len":
+            if len(graph_input.type.tensor_type.shape.dim) != 1:
+                raise RuntimeError(
+                    "cache_len must be rank 1, got "
+                    f"rank {len(graph_input.type.tensor_type.shape.dim)}"
+                )
+            _set_static_dim(graph_input, 0, 1)
+        elif graph_input.name in CACHE_INPUT_NAMES:
+            _set_static_dim(graph_input, 0, BATCH_SIZE)
+            _clear_dim_name(graph_input, 2)
+    if expected_inputs:
+        raise RuntimeError(f"ONNX decoder is missing inputs: {sorted(expected_inputs)}")
+
+    for graph_output in model.graph.output:
+        if graph_output.name.startswith("out_"):
+            _set_static_dim(graph_output, 0, BATCH_SIZE)
+            _set_static_dim(graph_output, 1, 1)
+        elif graph_output.name.startswith("cache_out"):
+            _set_static_dim(graph_output, 0, BATCH_SIZE)
+            _clear_dim_name(graph_output, 2)
+    return model.SerializeToString()
+
+
 def _set_decoder_profile(
     profile: trt.IOptimizationProfile, network: trt.INetworkDefinition
 ) -> None:
@@ -106,12 +163,11 @@ def build_engine_from_onnx(
     network = builder.create_network()
     parser = trt.OnnxParser(network, TRT_LOGGER)
 
-    with open(onnx_file_path, "rb") as model_file:
-        if not parser.parse(model_file.read()):
-            print("ERROR: Failed to parse the ONNX file.")
-            for error in range(parser.num_errors):
-                print(parser.get_error(error))
-            return None
+    if not parser.parse(_decoder_onnx_for_tensorrt(onnx_file_path)):
+        print("ERROR: Failed to parse the ONNX file.")
+        for error in range(parser.num_errors):
+            print(parser.get_error(error))
+        return None
 
     _rename_dynamic_cache_dimensions(network)
 
