@@ -14,6 +14,7 @@ from training.architecture.transformer.decoder import (
 )
 from training.architecture.transformer.encoder import get_encoder
 
+BATCH_SIZE = 16
 
 class DecoderWrapper(torch.nn.Module):
     def __init__(self, model: ScoreTransformerWrapper) -> None:
@@ -48,7 +49,6 @@ class DecoderWrapper(torch.nn.Module):
             out_articulations,
             out_slurs,
             _x,
-            attention,
             *cache,
         ) = self.model(
             rhythms=rhythms,
@@ -60,7 +60,7 @@ class DecoderWrapper(torch.nn.Module):
             cache_len=cache_len,
             mask=None,
             cache=cache,
-            return_center_of_attention=True,
+            return_center_of_attention=False,
         )
         return (
             out_rhythms,
@@ -69,7 +69,6 @@ class DecoderWrapper(torch.nn.Module):
             out_positions,
             out_articulations,
             out_slurs,
-            attention,
             *cache,
         )
 
@@ -101,7 +100,9 @@ def convert_encoder(overwrite: bool) -> str | None:
     model.eval()
 
     # Prepare input tensor
-    input_tensor = torch.randn(1, 1, config.max_height, config.max_width).float()
+    input_tensor = torch.randn(BATCH_SIZE, 1, config.max_height, config.max_width).float()
+
+    dynamic_axes = {"input": {0: "batch_size"}}
 
     # Export to onnx
     torch.onnx.export(
@@ -113,6 +114,7 @@ def convert_encoder(overwrite: bool) -> str | None:
         do_constant_folding=True,
         input_names=["input"],
         output_names=["output"],
+        dynamic_axes=dynamic_axes,
     )
 
     return path_out
@@ -124,7 +126,6 @@ def convert_decoder(overwrite: bool) -> str | None:
     """
     config = Config()
     model = get_score_wrapper(config, attn_flash=False)
-    model.eval()
 
     path_out = config.filepaths.decoder_path
 
@@ -139,6 +140,8 @@ def convert_decoder(overwrite: bool) -> str | None:
         strict=True,
     )
 
+    model.eval()
+
     # Using a wrapper model with a custom forward() function
     wrapped_model = DecoderWrapper(model)
     wrapped_model.eval()
@@ -148,16 +151,25 @@ def convert_decoder(overwrite: bool) -> str | None:
     kv_cache, kv_input_names, kv_output_names, dynamic_axes, cache_length = init_cache(
         0, torch.device("cpu")
     )
-    rhythms = torch.randint(0, config.num_rhythm_tokens, (1, 1)).long()
-    pitchs = torch.randint(0, config.num_pitch_tokens, (1, 1)).long()
-    lifts = torch.randint(0, config.num_lift_tokens, (1, 1)).long()
-    articulations = torch.randint(0, config.num_articulation_tokens, (1, 1)).long()
-    slurs = torch.randint(0, config.num_slur_tokens, (1, 1)).long()
-    cache_len = torch.tensor([cache_length]).long()
+    rhythms = torch.randint(0, config.num_rhythm_tokens, (BATCH_SIZE, 1)).long()
+    pitchs = torch.randint(0, config.num_pitch_tokens, (BATCH_SIZE, 1)).long()
+    lifts = torch.randint(0, config.num_lift_tokens, (BATCH_SIZE, 1)).long()
+    articulations = torch.randint(0, config.num_articulation_tokens, (BATCH_SIZE, 1)).long()
+    slurs = torch.randint(0, config.num_slur_tokens, (BATCH_SIZE, 1)).long()
+    cache_len = torch.full((BATCH_SIZE,), cache_length, dtype=torch.int64)
     cache = kv_cache
-    context = torch.randn((1, 1280, config.encoder_dim)).float()
+    context = torch.randn((BATCH_SIZE, 1280, config.encoder_dim)).float()
 
-    dynamic_axes["context"] = {1: "cache_exists"}
+    dynamic_axes["context"] = {0: "batch_size", 1: "cache_exists"}
+    
+    # Batch size
+    dynamic_axes["rhythms"] = {0: "batch_size"}
+    dynamic_axes["pitchs"] = {0: "batch_size"}
+    dynamic_axes["lifts"] = {0: "batch_size"}
+    dynamic_axes["articulations"] = {0: "batch_size"}
+    dynamic_axes["slurs"] = {0: "batch_size"}
+    dynamic_axes["cache_len"] = {0: "batch_size"}
+
 
     torch.onnx.export(
         wrapped_model,
@@ -180,7 +192,6 @@ def convert_decoder(overwrite: bool) -> str | None:
             "out_positions",
             "out_articulations",
             "out_slurs",
-            "attention",
             *kv_output_names,
         ],
         dynamic_axes=dynamic_axes,
