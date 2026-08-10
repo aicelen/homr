@@ -4,7 +4,7 @@ homr is an Optical Music Recognition (OMR) software designed to transform camera
 machine-readable MusicXML format. The resulting [MusicXML](https://www.w3.org/2021/06/musicxml40/) files can be further
 processed using tools such as [musescore](https://musescore.com/).
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/liebharc/homr/blob/main/colab.ipynb)
+For a quick try, visit our online demo at [homr.site](https://homr.site) or [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/liebharc/homr/blob/main/colab.ipynb)
 
 You might also want to check out [Andromr](https://github.com/aicelen/Andromr), an Android app for optical music recognition using homr.
 
