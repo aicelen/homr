@@ -8,25 +8,34 @@ workspace = os.path.join(os.path.dirname(__file__))
 root_dir = os.getcwd()
 
 
+# Models which were trained before clef_TAB5 was added to the vocabulary.
+# They emit token indices of the legacy rhythm vocabulary and therefore need
+# to be decoded with it, see build_rhythm().
+MODELS_WITHOUT_TAB_CLEF = [
+    "pytorch_model_396-f6feedb42ff90087d898b0941a55d040fa6b2903",
+    "pytorch_model_414-79aec9b6b66de2281972c9d4f9c606f3f84c9cd1",
+]
+
+
 class FilePaths:
     def __init__(self) -> None:
-        model_name = "pytorch_model_426-b6fd20809a8dcaf10dfd39a4ca4f64c6f056e644"
+        self.model_name = "pytorch_model_414-79aec9b6b66de2281972c9d4f9c606f3f84c9cd1"
         self.encoder_path = os.path.join(
             workspace,
-            f"encoder_{model_name}.onnx",
+            f"encoder_{self.model_name}.onnx",
         )  # noqa: E501
         self.decoder_path = os.path.join(
             workspace,
-            f"decoder_{model_name}.onnx",
+            f"decoder_{self.model_name}.onnx",
         )  # noqa: E501
 
         self.encoder_path_fp16 = os.path.join(
             workspace,
-            f"encoder_{model_name}_fp16.onnx",
+            f"encoder_{self.model_name}_fp16.onnx",
         )  # noqa: E501
         self.decoder_path_fp16 = os.path.join(
             workspace,
-            f"decoder_{model_name}_fp16.onnx",
+            f"decoder_{self.model_name}_fp16.onnx",
         )  # noqa: E501
 
         self.checkpoint = os.path.join(
@@ -34,7 +43,7 @@ class FilePaths:
             "training",
             "architecture",
             "transformer",
-            f"{model_name}.pth",
+            f"{self.model_name}.pth",
         )
 
         self.rhythmtokenizer = os.path.join(workspace, "tokenizer_rhythm.json")
@@ -84,8 +93,10 @@ class DecoderArgs:
 
 class Config:
     def __init__(self) -> None:
-        self.vocab = Vocabulary()
         self.filepaths = FilePaths()
+        self.vocab = Vocabulary(
+            include_tab_clef=self.filepaths.model_name not in MODELS_WITHOUT_TAB_CLEF
+        )
         self.channels = 1
         self.patch_size = 16
         self.max_height = 256

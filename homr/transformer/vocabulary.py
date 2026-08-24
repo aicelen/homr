@@ -28,7 +28,15 @@ def build_dict(tokens: Iterable[str]) -> dict[str, int]:
     return result
 
 
-def build_rhythm() -> dict[str, int]:
+def build_rhythm(include_tab_clef: bool = True) -> dict[str, int]:
+    """
+    Builds the rhythm branch of the vocabulary.
+
+    Models which were trained before clef_TAB5 was introduced (e.g. the 396
+    and 414 checkpoints) expect a vocabulary without clef_TAB5. Decoding their
+    token indices with the current vocabulary would shift every symbol after
+    clef_G2 by one, therefore pass include_tab_clef=False for those models.
+    """
     rhythm = []
 
     # sequence symbols
@@ -46,7 +54,8 @@ def build_rhythm() -> dict[str, int]:
     rhythm.extend([f"clef_F{c}" for c in range(3, 6)])
     rhythm.extend([f"clef_C{c}" for c in range(1, 6)])
     rhythm.extend([f"clef_G{c}" for c in range(1, 3)])
-    rhythm.append("clef_TAB5")
+    if include_tab_clef:
+        rhythm.append("clef_TAB5")
 
     # signatures
     rhythm.extend([f"keySignature_{c}" for c in range(-7, 8)])
@@ -189,8 +198,8 @@ def has_rhythm_symbol_a_position(rhythm: str) -> bool:
 
 
 class Vocabulary:
-    def __init__(self) -> None:
-        self.rhythm = build_rhythm()
+    def __init__(self, include_tab_clef: bool = True) -> None:
+        self.rhythm = build_rhythm(include_tab_clef)
         self.lift = build_lift()
         self.articulation = build_articulation()
         self.pitch = build_pitch()

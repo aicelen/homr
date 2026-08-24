@@ -15,6 +15,7 @@ from homr.transformer.vocabulary import (
     SymbolDuration,
     empty,
     nonote,
+    prior_power_of_two,
     sort_token_chords,
 )
 
@@ -474,6 +475,19 @@ DURATION_NAMES = {
 }
 
 
+def get_duration_name(kern_duration: int) -> str:
+    """
+    Maps a kern duration onto the MusicXML type name. Durations like tuplet
+    grace notes have no direct MusicXML equivalent, in that case we fall back
+    onto the closest smaller power of two.
+    """
+    if kern_duration in DURATION_NAMES:
+        return DURATION_NAMES[kern_duration]
+    fallback = DURATION_NAMES[prior_power_of_two(kern_duration)]
+    eprint("WARNING unknown duration", kern_duration, "using", fallback, "instead")
+    return fallback
+
+
 def build_articulations(
     note: ET.Element, articualations: str, tuplet_mark: str, state: ConversionState
 ) -> None:
@@ -593,14 +607,14 @@ def build_note_or_rest(
 
     if "G" in model_note.rhythm:
         base_duration = model_duration.kern
-        ET.SubElement(note, "type").text = DURATION_NAMES[base_duration]
+        ET.SubElement(note, "type").text = get_duration_name(base_duration)
     elif model_duration.fraction.numerator > 0:
         base_duration = 1 if model_duration.kern == 0 else model_duration.kern
         ET.SubElement(note, "duration").text = str(int(model_duration.fraction * state.division))
-        ET.SubElement(note, "type").text = DURATION_NAMES[base_duration]
+        ET.SubElement(note, "type").text = get_duration_name(base_duration)
     else:
         ET.SubElement(note, "duration").text = str(state.beats)
-        ET.SubElement(note, "type").text = DURATION_NAMES[0]
+        ET.SubElement(note, "type").text = get_duration_name(0)
 
     for _ in range(model_duration.dots):
         ET.SubElement(note, "dot")

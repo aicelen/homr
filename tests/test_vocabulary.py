@@ -3,8 +3,10 @@
 import unittest
 from fractions import Fraction
 
+from homr.transformer.configs import MODELS_WITHOUT_TAB_CLEF, Config
 from homr.transformer.vocabulary import (
     EncodedSymbol,
+    Vocabulary,
     kern_to_symbol_duration,
     remove_duplicated_symbols,
 )
@@ -206,3 +208,38 @@ barline . . . . ."""
             duration = kern_to_symbol_duration(kern)
             self.assertEqual(duration.normal_notes, 1)
             self.assertEqual(duration.actual_notes, 1)
+
+
+class TestVocabularyCompatibility(unittest.TestCase):
+    """
+    Models like pytorch_model_396 and pytorch_model_414 were trained before
+    clef_TAB5 was added to the rhythm vocabulary. Their token indices are
+    shifted by one compared to the current vocabulary, therefore they have
+    to be decoded with the legacy vocabulary, see Config in configs.py.
+    """
+
+    def test_current_vocabulary_contains_tab_clef(self) -> None:
+        vocab = Vocabulary()
+        self.assertEqual(vocab.rhythm["clef_TAB5"], 23)
+        # Everything after clef_TAB5 is shifted by one compared to models
+        # which were trained without it.
+        self.assertEqual(vocab.rhythm["keySignature_-7"], 24)
+        self.assertEqual(vocab.rhythm["timeSignature/6"], 43)
+        self.assertEqual(vocab.rhythm["note_8"], 100)
+
+    def test_legacy_vocabulary_matches_models_without_tab_clef(self) -> None:
+        vocab = Vocabulary(include_tab_clef=False)
+        self.assertNotIn("clef_TAB5", vocab.rhythm)
+        self.assertEqual(len(vocab.rhythm), len(Vocabulary().rhythm) - 1)
+        # Token indices as they were when pytorch_model_414 was trained.
+        self.assertEqual(vocab.rhythm["clef_G2"], 22)
+        self.assertEqual(vocab.rhythm["keySignature_-7"], 23)
+        self.assertEqual(vocab.rhythm["timeSignature/6"], 42)
+        self.assertEqual(vocab.rhythm["note_8"], 99)
+
+    def test_config_selects_vocabulary_based_on_model(self) -> None:
+        config = Config()
+        expected = Vocabulary(
+            include_tab_clef=config.filepaths.model_name not in MODELS_WITHOUT_TAB_CLEF
+        )
+        self.assertEqual(config.vocab.rhythm, expected.rhythm)

@@ -2,10 +2,13 @@
 
 import unittest
 import xml.etree.ElementTree as ET
+from fractions import Fraction
 
 from homr.music_xml_generator import (
+    ConversionState,
     SymbolChord,
     XmlGeneratorArguments,
+    build_note_or_rest,
     generate_xml,
     rebalance_measure_voices,
 )
@@ -58,6 +61,19 @@ class TestMusicXmlGenerator(unittest.TestCase):
     This script requires that the data sets are downloaded and converted and uses
     the data sets to check that back and forth conversion works.
     """
+
+    def test_grace_note_with_tuplet_duration_gets_fallback_type(self) -> None:
+        """
+        Grace notes keep their raw kern duration, so tuplet graces like 12G
+        have no direct MusicXML type. Instead of crashing we fall back onto
+        the closest smaller power of two.
+        """
+        symbol = EncodedSymbol("note_12G", pitch="C4", position="upper")
+        state = ConversionState(4, Fraction(3, 4))
+        note = build_note_or_rest(symbol, 0, False, state, "")
+        self.assertIsNotNone(note.find("grace"))
+        self.assertIsNone(note.find("duration"))
+        self.assertEqual(note.findtext("type"), "eighth")
 
     def test_chord_with_different_duratons(self) -> None:
         tabi_measure_18_upper = """clef_G2 . . . . upper
