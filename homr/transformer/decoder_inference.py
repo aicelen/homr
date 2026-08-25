@@ -36,6 +36,7 @@ class ScoreDecoder:
 
         self.fp16 = fp16
         self.use_gpu = use_gpu
+        self.device = "cuda" if use_gpu else "cpu"
         self.device_id = 0
         self.output_names = [
             "out_rhythms",
@@ -97,7 +98,7 @@ class ScoreDecoder:
 
             # Bind Outputs
             for name in output_names:
-                self.io_binding.bind_output(name, "cuda" if self.use_gpu else "cpu", self.device_id)
+                self.io_binding.bind_output(name, self.device, self.device_id)
 
             # Run inference
             self.net.run_with_iobinding(iobinding=self.io_binding)
@@ -162,7 +163,7 @@ class ScoreDecoder:
                 cache.append(
                     ort.OrtValue.ortvalue_from_numpy(
                         np.zeros((1, heads, cache_len, head_dim), dtype=np.float16),
-                        "cuda" if self.use_gpu else "cpu",
+                        self.device,
                         self.device_id,
                     )
                 )
@@ -170,7 +171,7 @@ class ScoreDecoder:
                 cache.append(
                     ort.OrtValue.ortvalue_from_numpy(
                         np.zeros((1, heads, cache_len, head_dim), dtype=np.float32),
-                        "cuda" if self.use_gpu else "cpu",
+                        self.device,
                         self.device_id,
                     )
                 )
@@ -200,14 +201,18 @@ def get_decoder(config: Config) -> ScoreDecoder:
             # Sometimes Ort falls automatically back to the CPU EP
             # if so we get an error due to the device selection in init_cache().
             # CoreML binds IO on the CPU (device == "cpu") even when the GPU/ANE runs the
-            # compute, so we only flip use_gpu on when CUDA device memory is in play.
+            # compute, so we only flip use_gpu on when CUDA/ROCm device memory is in play.
             active = onnx_transformer.get_providers()
-            if device == "cuda" and "CUDAExecutionProvider" in active:
-                use_gpu = True
-            elif device == "cuda":
-                eprint(
-                    "Onnxruntime is not using GPU and therefore falling back to CPU. This is slow."
-                )
+            if device == "cuda":
+                for active_provider in active:
+                    if active_provider in {"CUDAExecutionProvider", "ROCMExecutionProvider"}:
+                        use_gpu = True
+                        break
+                if not use_gpu:
+                    eprint(
+                        "Onnxruntime is not using GPU and therefore falling back to CPU. "
+                        "This is slow."
+                    )
 
         except Exception as ex:
             eprint(ex)

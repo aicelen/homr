@@ -32,7 +32,7 @@ from homr.model import InputPredictions, MultiStaff
 from homr.music_xml_generator import XmlGeneratorArguments, generate_xml
 from homr.noise_filtering import filter_predictions
 from homr.note_detection import add_notes_to_staffs, combine_noteheads_with_stems
-from homr.onnx_providers import coreml_available, cuda_available
+from homr.onnx_providers import coreml_available, cuda_available, rocm_available
 from homr.pdf_utils import render_pdf_to_image
 from homr.resize import resize_image
 from homr.segmentation.config import segnet_path_onnx, segnet_path_onnx_fp16
@@ -160,7 +160,7 @@ class ProcessingConfig:
     write_staff_positions: bool
     read_staff_positions: bool
     selected_staff: int
-    # The transformer (encoder/decoder) only benefits from CUDA: its fp16 "GPU"
+    # The transformer (encoder/decoder) only benefits from CUDA/ROCm: its fp16 "GPU"
     # models are slower than the fp32 ones when they end up on the CPU EP, and
     # the CoreML EP cannot run the decoder. Segnet additionally supports CoreML.
     transformer_use_gpu: bool
@@ -428,13 +428,15 @@ def main() -> None:
     force_gpu = args.gpu == GpuSupport.FORCE
     auto_gpu = args.gpu == GpuSupport.AUTO
 
-    # CUDA speeds up the whole pipeline. CoreML only helps segnet: the fp16
+    # CUDA/ROCm speeds up the whole pipeline. CoreML only helps segnet: the fp16
     # models the GPU path uses are slower on the CPU EP than the fp32 ones,
     # and the CoreML EP cannot run the decoder (see Segnet for details).
-    transformer_use_gpu = force_gpu or (auto_gpu and cuda_available())
-    segnet_use_gpu = force_gpu or (auto_gpu and (cuda_available() or coreml_available()))
+    transformer_use_gpu = force_gpu or (auto_gpu and (cuda_available() or rocm_available()))
+    segnet_use_gpu = force_gpu or (
+        auto_gpu and (cuda_available() or rocm_available() or coreml_available())
+    )
     # The CoreML encoder is a separate opt-in and only applies when the
-    # transformer isn't already on CUDA.
+    # transformer isn't already on CUDA/ROCm.
     coreml_encoder = args.coreml_encoder and not transformer_use_gpu and coreml_available()
 
     download_weights(segnet_use_gpu, transformer_use_gpu, coreml_encoder)
