@@ -10,13 +10,14 @@ from homr.type_definitions import NDArray
 
 
 class Debug:
-    def __init__(self, original_image: NDArray, filename: str, debug: bool):
+    def __init__(self, original_image: NDArray, filename: str, debug: bool, data_gen: bool):
         self.filename = filename
         self.original_image = original_image
         filename = filename.replace("\\", "/")
         self.dir_name = os.path.dirname(filename)
         self.base_filename = os.path.join(self.dir_name, filename.split("/")[-1].split(".")[0])
         self.debug = debug
+        self.data_gen = data_gen
         self.colors = [
             (0, 255, 0),
             (0, 0, 255),

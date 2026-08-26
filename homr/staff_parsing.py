@@ -14,7 +14,7 @@ from homr.staff_regions import StaffRegions
 from homr.transformer.configs import Config, default_config
 from homr.transformer.vocabulary import EncodedSymbol, remove_duplicated_symbols
 from homr.type_definitions import NDArray
-
+from homr.sql_database import datagen
 
 def _flatten_staffs(staffs: list[MultiStaff]) -> list[Staff]:
     return [s for multi_staff in staffs for s in multi_staff.staffs]
@@ -328,6 +328,8 @@ def parse_staff_image(
                 (0, 0, 255),
                 1,
             )
+    if debug.data_gen:
+        datagen.save_staff(staff_image, result)
 
         debug.write_image_with_fixed_suffix(f"_staff-{index}_output.jpg", result_image)
     return result
