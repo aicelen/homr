@@ -1,4 +1,5 @@
 import math
+import os
 
 import cv2
 import numpy as np
@@ -14,7 +15,7 @@ from homr.staff_regions import StaffRegions
 from homr.transformer.configs import Config, default_config
 from homr.transformer.vocabulary import EncodedSymbol, remove_duplicated_symbols
 from homr.type_definitions import NDArray
-from homr.sql_database import datagen
+from homr.sql_database import datagen_db, datagen_path
 
 def _flatten_staffs(staffs: list[MultiStaff]) -> list[Staff]:
     return [s for multi_staff in staffs for s in multi_staff.staffs]
@@ -328,10 +329,13 @@ def parse_staff_image(
                 (0, 0, 255),
                 1,
             )
+            debug.write_image_with_fixed_suffix(f"_staff-{index}_output.jpg", result_image)
     if debug.data_gen:
-        datagen.save_staff(staff_image, result)
-
-        debug.write_image_with_fixed_suffix(f"_staff-{index}_output.jpg", result_image)
+        path_to_staff = os.path.join(datagen_path, f"page_{debug.db_page_index}", f"staff_{index}.png")
+        os.makedirs(os.path.dirname(path_to_staff), exist_ok=True)
+        cv2.imwrite(path_to_staff, staff_image)
+        eprint(path_to_staff)
+        datagen_db.add_staff(debug.db_page_index, staff_image, result)
     return result
 
 
