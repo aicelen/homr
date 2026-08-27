@@ -256,7 +256,6 @@ class TokensMeasure:
 
 
 class TupletState:
-
     def __init__(self) -> None:
         self.started = False
         self.last_stop_position = -1
@@ -553,12 +552,12 @@ def _collect_articulation(note: ET.Element, part: TokensPart, staff: int) -> tup
         return empty, empty
 
     if len(articulations) == 0:
-        return empty, str.join("_", sorted(slurs))
+        return empty, str.join("_", sorted(set(slurs)))
 
     if len(slurs) == 0:
         return str.join("_", sorted(articulations)), empty
 
-    return str.join("_", sorted(articulations)), str.join("_", sorted(slurs))
+    return str.join("_", sorted(articulations)), str.join("_", sorted(set(slurs)))
 
 
 def _process_note(part: TokensPart, note: ET.Element) -> None:

@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 from pathlib import Path
 
 script_location = os.path.dirname(os.path.realpath(__file__))
@@ -10,10 +10,13 @@ org_images_path = os.path.join(datagen_path, "org_images")
 
 os.makedirs(org_images_path, exist_ok=True)
 
+
 class DataGen:
     def __init__(self):
         self.conn = sqlite3.connect(os.path.join(datagen_path, "datagen.db"))
-        self.conn.execute("PRAGMA journal_mode=WAL;") # so we can access it from multiple py instances
+        self.conn.execute(
+            "PRAGMA journal_mode=WAL;"
+        )  # so we can access it from multiple py instances
         self.cursor = self.conn.cursor()
         self.create()
 
@@ -43,17 +46,31 @@ class DataGen:
 
     def add_page(self, path_to_image: str, musicxml: str, name: str) -> int:
         "adds a page and returns the created id"
-        self.cursor.execute("INSERT INTO page (path, musicxml, name) VALUES (?,?,?)", (path_to_image,musicxml,name,))
+        self.cursor.execute(
+            "INSERT INTO page (path, musicxml, name) VALUES (?,?,?)",
+            (
+                path_to_image,
+                musicxml,
+                name,
+            ),
+        )
         self.conn.commit()
         return self.cursor.lastrowid
 
-
     def add_staff(self, page_id: int, path_to_image: str, tokens: str):
         "adds a staff"
-        self.cursor.execute("INSERT INTO staff (page_id, path, tokens) VALUES (?,?,?)", (page_id, path_to_image, str(tokens),))
+        self.cursor.execute(
+            "INSERT INTO staff (page_id, path, tokens) VALUES (?,?,?)",
+            (
+                page_id,
+                path_to_image,
+                str(tokens),
+            ),
+        )
         self.conn.commit()
 
     def close(self):
         self.conn.close()
+
 
 datagen_db = DataGen()

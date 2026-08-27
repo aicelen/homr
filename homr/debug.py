@@ -32,7 +32,7 @@ class Debug:
         ]
         self.debug_output_counter = 0
         self.written_files: list[str] = []
-        self.db_page_index = -1 # Only used with --datagen
+        self.db_page_index = -1  # Only used with --datagen
 
     def clean_debug_files_from_previous_runs(self) -> None:
         prefixes = (

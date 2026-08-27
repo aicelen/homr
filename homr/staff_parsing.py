@@ -9,13 +9,14 @@ from homr.debug import Debug
 from homr.image_utils import crop_image_and_return_new_top
 from homr.model import MultiStaff, Staff
 from homr.simple_logging import eprint
+from homr.sql_database import datagen_db, datagen_path
 from homr.staff_dewarping import StaffDewarping, dewarp_staff_image
 from homr.staff_parsing_tromr import parse_staff_tromr
 from homr.staff_regions import StaffRegions
 from homr.transformer.configs import Config, default_config
 from homr.transformer.vocabulary import EncodedSymbol, remove_duplicated_symbols
 from homr.type_definitions import NDArray
-from homr.sql_database import datagen_db, datagen_path
+
 
 def _flatten_staffs(staffs: list[MultiStaff]) -> list[Staff]:
     return [s for multi_staff in staffs for s in multi_staff.staffs]
@@ -331,7 +332,9 @@ def parse_staff_image(
             )
             debug.write_image_with_fixed_suffix(f"_staff-{index}_output.jpg", result_image)
     if debug.data_gen:
-        path_to_staff = os.path.join(datagen_path, f"page_{debug.db_page_index}", f"staff_{index}.png")
+        path_to_staff = os.path.join(
+            datagen_path, f"page_{debug.db_page_index}", f"staff_{index}.png"
+        )
         os.makedirs(os.path.dirname(path_to_staff), exist_ok=True)
         cv2.imwrite(path_to_staff, staff_image)
         datagen_db.add_staff(debug.db_page_index, path_to_staff, result)
