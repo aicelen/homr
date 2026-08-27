@@ -334,8 +334,7 @@ def parse_staff_image(
         path_to_staff = os.path.join(datagen_path, f"page_{debug.db_page_index}", f"staff_{index}.png")
         os.makedirs(os.path.dirname(path_to_staff), exist_ok=True)
         cv2.imwrite(path_to_staff, staff_image)
-        eprint(path_to_staff)
-        datagen_db.add_staff(debug.db_page_index, staff_image, result)
+        datagen_db.add_staff(debug.db_page_index, path_to_staff, result)
     return result
 
 
