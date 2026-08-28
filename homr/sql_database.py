@@ -7,7 +7,7 @@ git_root = Path(script_location).parent.absolute()
 dataset_root = os.path.join(git_root, "datasets")
 datagen_path = os.path.join(dataset_root, "datagen")
 org_images_path = os.path.join(datagen_path, "org_images")
-
+datagen_train_index = os.path.join(datagen_path, "index.txt")
 os.makedirs(org_images_path, exist_ok=True)
 
 
@@ -68,6 +68,23 @@ class DataGen:
             ),
         )
         self.conn.commit()
+
+    def get_data_samples(self, id):
+        self.cursor.execute(
+            """
+            SELECT page.musicxml, staff.path, staff.tokens
+            FROM page, staff
+            WHERE page.id == staff.page_id
+            AND page.id == ?
+            """,
+            (id,),
+        )
+        rows = self.cursor.fetchall()
+        return rows
+
+    def get_page_count(self) -> int:
+        self.cursor.execute("SELECT COUNT(*) FROM page")
+        return self.cursor.fetchone()[0]
 
     def close(self):
         self.conn.close()

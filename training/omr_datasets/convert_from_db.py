@@ -4,13 +4,13 @@ import xml.etree.ElementTree as ET
 from collections import deque
 
 from homr.circle_of_fifths import strip_naturals
-from homr.sql_database import datagen_path
 from homr.transformer.vocabulary import EncodedSymbol
-from training.omr_datasets.music_xml_parser import music_xml_file_to_tokens
+from training.omr_datasets.music_xml_parser import music_xml_string_to_tokens
 from training.transformer.training_vocabulary import (
     check_token_lines,
     token_lines_to_str,
 )
+from homr.sql_database import datagen_db, datagen_train_index
 
 
 def get_part_ids_in_order(root: ET.Element) -> list:
@@ -40,9 +40,9 @@ def get_system_measure_counts(part: ET.Element) -> list:
     return counts
 
 
-def count_measures_in_xml(xml_path: str) -> list:
+def count_measures_in_xml(musicxml: str) -> list:
     """Return a flat list of measure counts per system, e.g. [5, 5, 7, 8]."""
-    root = ET.parse(xml_path).getroot()
+    root = ET.fromstring(musicxml)
 
     part_ids = get_part_ids_in_order(root)
     parts = {p.get("id"): p for p in root.findall("part")}
@@ -57,9 +57,12 @@ def count_measures_in_xml(xml_path: str) -> list:
     return per_voice_counts[0] if per_voice_counts else []
 
 
-def match_xml_and_staffs(xml_path: str):
-    ground_truth_tokens = music_xml_file_to_tokens(xml_path)
-    number_measures = count_measures_in_xml(xml_path)
+def match_xml_and_staffs(musicxml: str) -> str:
+    """
+    This matchesthe staff and the musicxml file by counting measures
+    """
+    ground_truth_tokens = music_xml_string_to_tokens(musicxml)
+    number_measures = count_measures_in_xml(musicxml)
 
     for voice in ground_truth_tokens:  # number of voices
         voice = deque(voice)
@@ -88,9 +91,7 @@ def match_xml_and_staffs(xml_path: str):
             flat = strip_naturals(flat)
             check_token_lines(flat)
             tokens_str = token_lines_to_str(flat)
-            print(tokens_str)
-            print("\n")
-
+            return tokens_str
 
 def get_header(
     flat: list[EncodedSymbol],
@@ -106,6 +107,20 @@ def get_header(
     return [clef, key, time]
 
 
+def convert_from_db():
+    for i in range(datagen_db.get_page_count()):
+        rows = datagen_db.get_data_samples(i)
+        for row in rows:
+            musicxml, staff_path, tokens_homr = row
+            tokens_ground_truth = match_xml_and_staffs(musicxml)
+            base_path, _ = os.path.splitext(staff_path)
+            token_path = base_path + ".tokens"
+            with open(token_path, "w") as f:
+                f.write(tokens_ground_truth)
+
+            with open(datagen_train_index, "a") as f:
+                f.write(f"{staff_path},{token_path}\n")
+
+
 if __name__ == "__main__":
-    path = os.path.join(datagen_path, "test.musicxml")
-    match_xml_and_staffs(path)
+    convert_from_db()
