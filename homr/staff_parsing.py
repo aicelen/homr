@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 
 import cv2
 import numpy as np
@@ -310,34 +311,39 @@ def parse_staff_image(
         debug, index, staff, image, regions=regions
     )
     eprint("Running TrOmr inference on staff image", index)
-    result = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
-    if debug.debug:
-        result_image = staff_image.copy()
-        for i, symbol in enumerate(result):
-            center = symbol.coordinates
-            if center is None or symbol.rhythm.startswith("chord"):
-                continue
-            if math.isnan(center[0]) or math.isnan(center[1]):
-                continue
-            center_int = (int(center[0]), int(center[1]))
-            cv2.circle(result_image, center_int, 5, color=(0, 0, 255), thickness=2)
-            cv2.putText(
-                result_image,
-                str(i) + ": " + symbol.rhythm,
-                (center_int[0], center_int[1] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.3,
-                (0, 0, 255),
-                1,
-            )
-            debug.write_image_with_fixed_suffix(f"_staff-{index}_output.jpg", result_image)
     if debug.data_gen:
+        result = []
         path_to_staff = os.path.join(
             datagen_path, f"page_{debug.db_page_index}", f"staff_{index}.png"
         )
         os.makedirs(os.path.dirname(path_to_staff), exist_ok=True)
         cv2.imwrite(path_to_staff, staff_image)
+
+        # to save compute we dont run tromr and just exit
         datagen_db.add_staff(debug.db_page_index, path_to_staff, result)
+
+    else:
+        result = parse_staff_tromr(staff_image=staff_image, staff=transformed_staff, config=config)
+        if debug.debug:
+            result_image = staff_image.copy()
+            for i, symbol in enumerate(result):
+                center = symbol.coordinates
+                if center is None or symbol.rhythm.startswith("chord"):
+                    continue
+                if math.isnan(center[0]) or math.isnan(center[1]):
+                    continue
+                center_int = (int(center[0]), int(center[1]))
+                cv2.circle(result_image, center_int, 5, color=(0, 0, 255), thickness=2)
+                cv2.putText(
+                    result_image,
+                    str(i) + ": " + symbol.rhythm,
+                    (center_int[0], center_int[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.3,
+                    (0, 0, 255),
+                    1,
+                )
+                debug.write_image_with_fixed_suffix(f"_staff-{index}_output.jpg", result_image)
     return result
 
 
@@ -373,4 +379,6 @@ def parse_staffs(
             i += 1
 
         voices.append(remove_duplicated_symbols(result_for_voice))
+    if debug.data_gen:
+        sys.exit()
     return voices

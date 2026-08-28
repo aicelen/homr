@@ -31,7 +31,7 @@ def run_homr(image_path: Path, img_index: int) -> None:
         raise RuntimeError(f"homr exited with code {result.returncode}\n{stderr[:1000]}")
 
 
-def main(number_of_images: int, clean=False):
+def main(number_of_images: int):
     """
     1. Run homr
     2. Gather data and save it to sql database
@@ -41,6 +41,7 @@ def main(number_of_images: int, clean=False):
 
     # access an example
     for i in range(min(number_of_images, len(ds))):
+        print(f"Finished {i} of {min(number_of_images, len(ds))}")
         # Get data
         row = ds[i]
         image_imslp = row["image_imslp"]
@@ -57,4 +58,4 @@ def main(number_of_images: int, clean=False):
 
 
 if __name__ == "__main__":
-    main(5, clean=True)
+    main(1000)
