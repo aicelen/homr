@@ -37,6 +37,7 @@ from homr.pdf_utils import render_pdf_to_image
 from homr.resize import resize_image
 from homr.segmentation.config import segnet_path_onnx, segnet_path_onnx_fp16
 from homr.segmentation.inference_segnet import extract
+from homr.segmentation.segnet_client import SegnetClient
 from homr.simple_logging import eprint
 from homr.sql_database import datagen_db
 from homr.staff_detection import break_wide_fragments, detect_staff, make_lines_stronger
@@ -81,14 +82,25 @@ def get_predictions(
     img_path: str,
     enable_cache: bool,
     segnet_use_gpu: bool,
+    datagen: bool,
 ) -> InputPredictions:
-    result = extract(
-        preprocessed,
-        img_path,
-        step_size=320,
-        use_cache=enable_cache,
-        use_gpu_inference=segnet_use_gpu,
-    )
+    if datagen:
+        result = SegnetClient().extract_server(
+            (
+                preprocessed,
+                img_path,
+                False, # use cache
+                segnet_use_gpu,
+            )
+        )
+    else:
+        result = extract(
+            preprocessed,
+            img_path,
+            step_size=320,
+            use_cache=enable_cache,
+            use_gpu_inference=segnet_use_gpu,
+        )
     original_image = cv2.resize(original, (result.staff.shape[1], result.staff.shape[0]))
     preprocessed_image = cv2.resize(preprocessed, (result.staff.shape[1], result.staff.shape[0]))
     return InputPredictions(
@@ -117,7 +129,7 @@ def load_and_preprocess_predictions(
     image = autocrop(image)
     image = resize_image(image)
     preprocessed = color_adjust.apply_clahe(image)
-    predictions = get_predictions(image, preprocessed, image_path, enable_cache, segnet_use_gpu)
+    predictions = get_predictions(image, preprocessed, image_path, enable_cache, segnet_use_gpu, data_gen != -1)
     debug = Debug(predictions.original, image_path, enable_debug, data_gen != -1)
     if debug.data_gen:
         debug.db_page_index = data_gen

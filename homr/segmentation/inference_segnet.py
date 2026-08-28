@@ -195,6 +195,7 @@ def inference(
 
     global _segnet_inference  # noqa: PLW0603
     if _segnet_inference is None:
+        print(f"LOADING SEGNET, GPU: {use_gpu_inference}")
         _segnet_inference = Segnet(use_gpu_inference)
 
     image_org = cv2.cvtColor(image_org, cv2.COLOR_GRAY2BGR)
