@@ -13,10 +13,15 @@ os.makedirs(org_images_path, exist_ok=True)
 
 class DataGen:
     def __init__(self):
-        self.conn = sqlite3.connect(os.path.join(datagen_path, "datagen.db"))
+        self.conn = sqlite3.connect(
+            os.path.join(datagen_path, "datagen.db"),
+            timeout=30
+        )
+
         self.conn.execute(
             "PRAGMA journal_mode=WAL;"
         )  # so we can access it from multiple py instances
+        self.conn.execute("PRAGMA busy_timeout=30000;") # timeout
         self.cursor = self.conn.cursor()
         self.create()
 

@@ -1,9 +1,12 @@
 import os
 import subprocess
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from datasets import load_dataset
+
 from homr.sql_database import datagen_db, org_images_path
+from homr.simple_logging import eprint
 from validation.tools import _REPO_ROOT
 
 
@@ -22,7 +25,7 @@ def run_homr(image_path: Path, img_index: int) -> None:
             str(img_index),
         ],  # noqa: S607
         cwd=str(_REPO_ROOT),
-        capture_output=False,  # if True does not show log from homr
+        capture_output=True,  # if True does not show log from homr
         check=False,
     )
     if result.returncode != 0:
@@ -31,7 +34,7 @@ def run_homr(image_path: Path, img_index: int) -> None:
         raise RuntimeError(f"homr exited with code {result.returncode}\n{stderr[:1000]}")
 
 
-def main(number_of_images: int):
+def main(number_of_images: int, max_workers=6):
     """
     1. Run homr
     2. Gather data and save it to sql database
@@ -39,23 +42,38 @@ def main(number_of_images: int):
     """
     ds = load_dataset("parquet", data_files="datasets/sq_native/*.parquet", split="train")
 
-    # access an example
+    jobs = []
     for i in range(min(number_of_images, len(ds))):
-        print(f"Finished {i} of {min(number_of_images, len(ds))}")
         # Get data
         row = ds[i]
         image_imslp = row["image_imslp"]
         filename = row["filename"]
         musicxml = row["musicxml"]
 
+        # Save image and create sql entry
         path = os.path.join(org_images_path, f"page_hf_{i + 1}.png")
-
-        # Save image
         image_imslp.save(path)
-
         index = datagen_db.add_page(path, musicxml, filename)
-        run_homr(path, index)
+
+        # Add to job for multithreading
+        jobs.append((path, index))
+
+    done = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        future_to_job = {
+            pool.submit(run_homr, path, index): (path, index)
+            for path, index in jobs
+        }
+        for future in as_completed(future_to_job):
+            path, index = future_to_job[future]
+            done += 1
+            try:
+                future.result()
+                eprint(f"Completed {done}/{len(jobs)} jobs")
+            except Exception as e:
+                eprint(f"FAILED job {index} ({path}): {e}")
+            
 
 
 if __name__ == "__main__":
-    main(1000)
+    main(20)
