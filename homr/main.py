@@ -91,6 +91,8 @@ def get_predictions(
                 img_path,
                 False, # use cache
                 segnet_use_gpu,
+                8,
+                320
             )
         )
     else:
