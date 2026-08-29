@@ -13,6 +13,7 @@ os.makedirs(org_images_path, exist_ok=True)
 
 @dataclass
 class Page:
+    name: str
     musicxml: str
     staffs: list[str]
     layout: list[int]
@@ -107,15 +108,15 @@ class DataGen:
 
         self.cursor.execute(
             """
-            SELECT musicxml, layout
+            SELECT name, musicxml, layout
             FROM page
             WHERE id == ?
             """,
             (id,),
         )
         data_from_page = self.cursor.fetchone()
-        layout = [int(x) for x in data_from_page[1].strip("[]").split(",")]
-        return Page(data_from_page[0], staffs, layout)
+        layout = [int(x) for x in data_from_page[2].strip("[]").split(",")]
+        return Page(data_from_page[0], data_from_page[1], staffs, layout)
 
     def get_page_count(self) -> int:
         self.cursor.execute("SELECT COUNT(*) FROM page")

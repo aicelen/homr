@@ -3,6 +3,7 @@ import sys
 import xml.etree.ElementTree as ET
 from collections import deque
 
+from homr.simple_logging import eprint
 from homr.circle_of_fifths import strip_naturals
 from homr.transformer.vocabulary import EncodedSymbol
 from training.omr_datasets.music_xml_parser import music_xml_string_to_tokens
@@ -60,25 +61,29 @@ def match_xml_and_staffs(page_data: Page) -> None:
     """
     This matches the staff and the musicxml file by counting measures
     """
-    ground_truth_tokens = music_xml_string_to_tokens(page_data.musicxml)
-    number_measures = count_measures_in_xml(page_data.musicxml)
+    try:
+        ground_truth_tokens = music_xml_string_to_tokens(page_data.musicxml)
+        number_measures = count_measures_in_xml(page_data.musicxml)#
+    except Exception as e:
+        eprint(e)
+        return
+
     number_of_systems = len(number_measures)
     expected_staffs = len(ground_truth_tokens) * number_of_systems
 
     # Same amount of systems
-    assert number_of_systems == len(page_data.layout)
+    if number_of_systems != len(page_data.layout):
+        eprint(f"{page_data.name}: musicxml and db don't have the same amount of systems.")
+        return
 
     # Same amount of staffs
-    assert len(page_data.staffs) == sum(page_data.layout)
+    if len(page_data.staffs) != sum(page_data.layout):
+        eprint(f"{page_data.name}: db doesn't have the same amount of staffs.")
+        return
 
     if expected_staffs != len(page_data.staffs):
-        raise ValueError(
-            f"Cannot match musicxml and staffs of page"
-            f" {os.path.basename(os.path.dirname(page_data.staffs[0]))}:"
-            f" expected {expected_staffs} staffs"
-            f" ({len(ground_truth_tokens)} voices x {number_of_systems} systems)"
-            f" but found {len(page_data.staffs)} staffs"
-        )
+        eprint(f"{page_data.name}: musicxml and db doesn't have the same amount of staffs.")
+        return
 
     for voice_index, voice in enumerate(ground_truth_tokens):
         voice = deque(voice)
@@ -103,10 +108,15 @@ def match_xml_and_staffs(page_data: Page) -> None:
 
             # we need to strip the current header
             flat = merged_header + flat[len([x for x in cur_header if x is not None]) :]
+            try:
+                flat = strip_naturals(flat)
+                check_token_lines(flat)
+                tokens_str = token_lines_to_str(flat)
 
-            flat = strip_naturals(flat)
-            check_token_lines(flat)
-            tokens_str = token_lines_to_str(flat)
+            except Exception as e:
+                eprint(e)
+                continue
+
             # Staff images are numbered voice-major (see parse_staffs in
             # homr/staff_parsing.py): first all systems of voice 0, then all
             # systems of voice 1 and so on. Therefore we have to offset each
@@ -143,6 +153,7 @@ def save_tokens(tokens_ground_truth: str, staff_path: str):
 
 def convert_from_db():
     for i in range(datagen_db.get_page_count()):
+        print(i+1)
         page_data = datagen_db.get_data_samples(i+1)
         match_xml_and_staffs(page_data)
 
