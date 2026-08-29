@@ -10,8 +10,7 @@ from training.transformer.training_vocabulary import (
     check_token_lines,
     token_lines_to_str,
 )
-from homr.sql_database import datagen_db, datagen_train_index
-
+from homr.sql_database import datagen_db, datagen_train_index, Page
 
 def get_part_ids_in_order(root: ET.Element) -> list:
     """Return part IDs in <part-list> order (top-to-bottom voice order)."""
@@ -57,14 +56,24 @@ def count_measures_in_xml(musicxml: str) -> list:
     return per_voice_counts[0] if per_voice_counts else []
 
 
-def match_xml_and_staffs(musicxml: str) -> str:
+def match_xml_and_staffs(page_data: Page) -> None:
     """
     This matches the staff and the musicxml file by counting measures
     """
-    ground_truth_tokens = music_xml_string_to_tokens(musicxml)
-    number_measures = count_measures_in_xml(musicxml)
+    ground_truth_tokens = music_xml_string_to_tokens(page_data.musicxml)
+    number_measures = count_measures_in_xml(page_data.musicxml)
+    number_of_systems = len(number_measures)
+    expected_staffs = len(ground_truth_tokens) * number_of_systems
+    if expected_staffs != len(page_data.staffs):
+        raise ValueError(
+            f"Cannot match musicxml and staffs of page"
+            f" {os.path.basename(os.path.dirname(page_data.staffs[0]))}:"
+            f" expected {expected_staffs} staffs"
+            f" ({len(ground_truth_tokens)} voices x {number_of_systems} systems)"
+            f" but found {len(page_data.staffs)} staffs"
+        )
 
-    for voice in ground_truth_tokens:  # number of voices
+    for voice_index, voice in enumerate(ground_truth_tokens):
         voice = deque(voice)
         for i, number_measure in enumerate(number_measures):
             measures = [voice.popleft() for _ in range(number_measure)]
@@ -91,7 +100,12 @@ def match_xml_and_staffs(musicxml: str) -> str:
             flat = strip_naturals(flat)
             check_token_lines(flat)
             tokens_str = token_lines_to_str(flat)
-            return tokens_str
+            # Staff images are numbered voice-major (see parse_staffs in
+            # homr/staff_parsing.py): first all systems of voice 0, then all
+            # systems of voice 1 and so on. Therefore we have to offset each
+            # system index by all the staffs of the previous voices.
+            staff_index = voice_index * number_of_systems + i
+            save_tokens(tokens_str, page_data.staffs[staff_index])
 
 def get_header(
     flat: list[EncodedSymbol],
@@ -107,19 +121,20 @@ def get_header(
     return [clef, key, time]
 
 
+def save_tokens(tokens_ground_truth: str, staff_path: str):
+    base_path, _ = os.path.splitext(staff_path)
+    token_path = base_path + ".tokens"
+    with open(token_path, "w") as f:
+        f.write(tokens_ground_truth)
+
+    with open(datagen_train_index, "a") as f:
+        f.write(f"{staff_path},{token_path}\n")
+
+
 def convert_from_db():
     for i in range(datagen_db.get_page_count()):
-        rows = datagen_db.get_data_samples(i)
-        for row in rows:
-            musicxml, staff_path, tokens_homr = row
-            tokens_ground_truth = match_xml_and_staffs(musicxml)
-            base_path, _ = os.path.splitext(staff_path)
-            token_path = base_path + ".tokens"
-            with open(token_path, "w") as f:
-                f.write(tokens_ground_truth)
-
-            with open(datagen_train_index, "a") as f:
-                f.write(f"{staff_path},{token_path}\n")
+        page_data = datagen_db.get_data_samples(i+1)
+        match_xml_and_staffs(page_data)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from pathlib import Path
+from dataclasses import dataclass
 
 script_location = os.path.dirname(os.path.realpath(__file__))
 git_root = Path(script_location).parent.absolute()
@@ -10,6 +11,10 @@ org_images_path = os.path.join(datagen_path, "org_images")
 datagen_train_index = os.path.join(datagen_path, "index.txt")
 os.makedirs(org_images_path, exist_ok=True)
 
+@dataclass
+class Page:
+    musicxml: str
+    staffs: list[str]
 
 class DataGen:
     def __init__(self):
@@ -87,18 +92,28 @@ class DataGen:
         self.conn.commit()
 
 
-    def get_data_samples(self, id):
+    def get_data_samples(self, id: int) -> Page:
+        """
+        Returns all staffs from one given page id
+        """
+        # Get staffs. Order by id so that we get the same voice-major order
+        # in which the staffs were inserted (see parse_staffs).
+        self.cursor.execute(
+            "SELECT path FROM staff WHERE page_id = ? ORDER BY id",
+            (id,),
+        )
+        staffs = [row[0] for row in self.cursor.fetchall()]
+
         self.cursor.execute(
             """
-            SELECT page.musicxml, staff.path, staff.tokens
-            FROM page, staff
-            WHERE page.id == staff.page_id
-            AND page.id == ?
+            SELECT musicxml
+            FROM page
+            WHERE id == ?
             """,
             (id,),
         )
-        rows = self.cursor.fetchall()
-        return rows
+        musicxml = self.cursor.fetchone()[0]
+        return Page(musicxml, staffs)
 
     def get_page_count(self) -> int:
         self.cursor.execute("SELECT COUNT(*) FROM page")
