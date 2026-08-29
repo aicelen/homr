@@ -64,6 +64,13 @@ def match_xml_and_staffs(page_data: Page) -> None:
     number_measures = count_measures_in_xml(page_data.musicxml)
     number_of_systems = len(number_measures)
     expected_staffs = len(ground_truth_tokens) * number_of_systems
+
+    # Same amount of systems
+    assert number_of_systems == len(page_data.layout)
+
+    # Same amount of staffs
+    assert len(page_data.staffs) == sum(page_data.layout)
+
     if expected_staffs != len(page_data.staffs):
         raise ValueError(
             f"Cannot match musicxml and staffs of page"
@@ -106,6 +113,9 @@ def match_xml_and_staffs(page_data: Page) -> None:
             # system index by all the staffs of the previous voices.
             staff_index = voice_index * number_of_systems + i
             save_tokens(tokens_str, page_data.staffs[staff_index])
+
+        # All entries from voice should be popped, otherwise sth went wrong
+        assert len(voice) == 0
 
 def get_header(
     flat: list[EncodedSymbol],

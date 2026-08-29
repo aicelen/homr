@@ -15,6 +15,7 @@ os.makedirs(org_images_path, exist_ok=True)
 class Page:
     musicxml: str
     staffs: list[str]
+    layout: list[int]
 
 class DataGen:
     def __init__(self):
@@ -85,7 +86,7 @@ class DataGen:
         self.cursor.execute(
             "UPDATE page SET layout = ? WHERE id = ?",
             (
-                str(layout),
+                str(layout).strip("[]"),
                 page_id,
             ),
         )
@@ -106,14 +107,15 @@ class DataGen:
 
         self.cursor.execute(
             """
-            SELECT musicxml
+            SELECT musicxml, layout
             FROM page
             WHERE id == ?
             """,
             (id,),
         )
-        musicxml = self.cursor.fetchone()[0]
-        return Page(musicxml, staffs)
+        data_from_page = self.cursor.fetchone()
+        layout = [int(x) for x in data_from_page[1].strip("[]").split(",")]
+        return Page(data_from_page[0], staffs, layout)
 
     def get_page_count(self) -> int:
         self.cursor.execute("SELECT COUNT(*) FROM page")
