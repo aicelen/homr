@@ -326,6 +326,10 @@ def detect_staffs_in_image(
         [len(staff.staffs) for staff in multi_staffs],
     )
 
+    if debug.data_gen:
+        # Write staff connection to image
+        datagen_db.add_layout([len(staff.staffs) for staff in multi_staffs], debug.db_page_index)
+
     debug.write_all_bounding_boxes_alternating_colors("notes", multi_staffs, notes)
 
     return multi_staffs, predictions.preprocessed, debug, title_future, len(staffs)

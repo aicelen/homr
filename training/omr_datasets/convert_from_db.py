@@ -59,7 +59,7 @@ def count_measures_in_xml(musicxml: str) -> list:
 
 def match_xml_and_staffs(musicxml: str) -> str:
     """
-    This matchesthe staff and the musicxml file by counting measures
+    This matches the staff and the musicxml file by counting measures
     """
     ground_truth_tokens = music_xml_string_to_tokens(musicxml)
     number_measures = count_measures_in_xml(musicxml)

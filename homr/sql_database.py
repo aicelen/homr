@@ -33,7 +33,8 @@ class DataGen:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT,
             musicxml TEXT,
-            name TEXT
+            name TEXT,
+            layout TEXT
             )
         """)
 
@@ -73,6 +74,18 @@ class DataGen:
             ),
         )
         self.conn.commit()
+
+    def add_layout(self, layout: list, page_id: int):
+        "adds the layout information of the staff, for example [4,4,4,4] 4 systems with 4 staffs each"
+        self.cursor.execute(
+            "UPDATE page SET layout = ? WHERE id = ?",
+            (
+                str(layout),
+                page_id,
+            ),
+        )
+        self.conn.commit()
+
 
     def get_data_samples(self, id):
         self.cursor.execute(

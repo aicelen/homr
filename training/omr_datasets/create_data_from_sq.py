@@ -96,4 +96,4 @@ def main(number_of_images: int, max_workers=4):
             
 
 if __name__ == "__main__":
-    main(number_of_images=50, max_workers=16)
+    main(number_of_images=10, max_workers=16)
