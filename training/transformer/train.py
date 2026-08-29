@@ -30,6 +30,7 @@ from training.omr_datasets.convert_primus import (
     convert_primus_dataset,
     primus_train_index,
 )
+from homr.sql_database import datagen_train_index
 from training.run_id import get_run_id
 from training.transformer.data_loader import label_names, load_dataset
 from training.transformer.distribute import Distribute
@@ -146,13 +147,9 @@ def train_transformer(
             shutil.rmtree(os.path.join(git_root, checkpoint_folder))
 
     dataset_index = [
-        lieder_train_index,
-        grandstaff_train_index,
-        primus_train_index,
-        pdmx_train_index,
-        musetrainer_train_index,
+        datagen_train_index,
     ]
-    dataset_weights = [1.0, 1.0, 1.0, 1.0, 1.0]
+    dataset_weights = [1.0]
     if distribute.is_rank0():
         _check_datasets_are_present(dataset_index)
     distribute.barrier()
@@ -168,15 +165,13 @@ def train_transformer(
     datasets = load_dataset(train_index, config, val_split=0.1)
 
     compile_threshold = 50000
-    compile_model = (
-        number_of_files < 0 or number_of_files * number_of_epochs >= compile_threshold
-    )  # Compiling needs time, but pays off for large datasets
+    compile_model = True
     if compile_model:
         eprint("Compiling model")
 
     run_id = get_run_id()
 
-    batch_size = 8  # 8gb vram
+    batch_size = 6  # 8gb vram
 
     train_args = TrainingArguments(
         checkpoint_folder,
@@ -185,7 +180,7 @@ def train_transformer(
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
         optim="adamw_torch_fused",
-        gradient_accumulation_steps=max(1, 4 // distribute.get_world_size()),
+        gradient_accumulation_steps=8,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size // 2,
         num_train_epochs=number_of_epochs,
@@ -206,9 +201,9 @@ def train_transformer(
     if fine_tune:
         eprint("Fine tuning model from", config.filepaths.checkpoint)
         model = load_model(config)
-        model.freeze_encoder()
-        model.freeze_decoder()
-        model.unfreeze_lift_decoder()
+        #model.freeze_encoder()
+        #model.freeze_decoder()
+        #model.unfreeze_lift_decoder()
     else:
         model = TrOMR(config)
 

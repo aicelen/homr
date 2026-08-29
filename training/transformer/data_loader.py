@@ -73,8 +73,8 @@ class DataLoader:
             random.seed(idx)
             np.random.seed(idx)
 
-        img = distort_image(img, allow_occlusions=not self.is_validation)
-        img = add_image_into_tr_omr_canvas(img)
+        # img = distort_image(img, allow_occlusions=not self.is_validation)
+        # img = add_image_into_tr_omr_canvas(img)
 
         if self.is_validation:
             random.setstate(state)
