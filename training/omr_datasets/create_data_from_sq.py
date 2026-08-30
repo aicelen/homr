@@ -2,13 +2,18 @@ import os
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import csv
 
-from datasets import load_dataset
+from music21 import converter
+import xml.etree.ElementTree as ET
 
-from homr.sql_database import datagen_db, org_images_path
+from homr.sql_database import datagen_db, org_images_path, dataset_root
 from homr.simple_logging import eprint
 from validation.tools import _REPO_ROOT
-
+from training.omr_datasets.convert_pdmx import _read_mxl
+string_quartets_root = os.path.join(dataset_root, "sq-git-repo")
+string_quartets_index = os.path.join(string_quartets_root, "data", "scores.tsv")
+string_quartets_scores = os.path.join(string_quartets_root, "scores")
 
 def run_homr(image_path: Path, img_index: int) -> None:
     """Run homr on every image in image_dir, writing .musicxml alongside each."""
@@ -25,7 +30,7 @@ def run_homr(image_path: Path, img_index: int) -> None:
             str(img_index),
         ],  # noqa: S607
         cwd=str(_REPO_ROOT),
-        capture_output=True,  # if True does not show log from homr
+        capture_output=False,  # if True does not show log from homr
         check=False,
     )
     if result.returncode != 0:
@@ -49,7 +54,6 @@ def run_segnet_server() -> subprocess.Popen:
     return process
 
 
-
 def main(number_of_images: int, max_workers=4):
     """
     1. Run homr
@@ -58,23 +62,27 @@ def main(number_of_images: int, max_workers=4):
     """
     server = run_segnet_server()
     try:
-        ds = load_dataset("parquet", data_files="datasets/sq_native/*.parquet", split="train")
+        with open(string_quartets_index, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            rows = list(reader)
+            jobs = []
 
-        jobs = []
-        for i in range(min(number_of_images, len(ds))):
-            # Get data
-            row = ds[i]
-            image_imslp = row["image_imslp"]
-            filename = row["filename"]
-            musicxml = row["musicxml"]
+            for i in range(min(number_of_images, len(rows))):
+                # Get data
+                entry = rows[i]
+                id = entry["id"] # e.g. 7313978
+                path = entry["path"] # e.g. Andrée,_Elfrida/String_Quartet_in_A_major 
+                filename = entry["name"] # e.g. String Quartet in A major
 
-            # Save image and create sql entry
-            path = os.path.join(org_images_path, f"page_hf_{i + 1}.png")
-            image_imslp.save(path)
-            index = datagen_db.add_page(path, musicxml, filename)
+                # build paths
+                pdf_path = os.path.join(string_quartets_scores, path, f"sq{id}.pdf")
+                mxl_path = os.path.join(string_quartets_scores, path, f"sq{id}.mxl")
 
-            # Add to job for multithreading
-            jobs.append((path, index))
+                musicxml = _read_mxl(mxl_path)
+                index = datagen_db.add_page(pdf_path, musicxml, filename)
+
+                # Add to job for multithreading
+                jobs.append((pdf_path, index))
 
         done = 0
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -96,4 +104,4 @@ def main(number_of_images: int, max_workers=4):
             
 
 if __name__ == "__main__":
-    main(number_of_images=1000, max_workers=16)
+    main(number_of_images=2, max_workers=2)
