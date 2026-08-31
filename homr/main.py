@@ -34,6 +34,7 @@ from homr.noise_filtering import filter_predictions
 from homr.note_detection import add_notes_to_staffs, combine_noteheads_with_stems
 from homr.onnx_providers import coreml_available, cuda_available
 from homr.pdf_utils import render_pdf_to_image
+from homr.relieur import process_concat
 from homr.resize import resize_image
 from homr.segmentation.config import segnet_path_onnx, segnet_path_onnx_fp16
 from homr.segmentation.inference_segnet import extract
@@ -44,8 +45,6 @@ from homr.staff_position_save_load import load_staff_positions, save_staff_posit
 from homr.title_detection import detect_title, download_ocr_weights
 from homr.transformer.configs import Config, default_config
 from homr.type_definitions import NDArray
-from homr.relieur import process_concat
-from homr.transformer.configs import root_dir
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -366,8 +365,11 @@ def download_weights(segnet_use_gpu: bool, transformer_use_gpu: bool, coreml_enc
                 if os.path.exists(downloaded_zip):
                     os.remove(downloaded_zip)
 
-def homr_on_dir(dir: str, config, xml_generator_args):
-    image_files = get_all_image_files_in_folder(dir)
+
+def homr_on_dir(
+    directory: str, config: ProcessingConfig, xml_generator_args: XmlGeneratorArguments
+) -> None:
+    image_files = get_all_image_files_in_folder(directory)
     eprint("Processing", len(image_files), "files:", image_files)
     error_files = []
     xml_paths = []
@@ -382,8 +384,8 @@ def homr_on_dir(dir: str, config, xml_generator_args):
     if len(error_files) > 0:
         eprint("Errors occurred while processing the following files:", error_files)
 
-    if len (xml_paths) > 1:
-        output_path = os.path.join(dir, "merged_scores.musicxml")
+    if len(xml_paths) > 1:
+        output_path = os.path.join(directory, "merged_scores.musicxml")
         m, _, _ = process_concat(xml_paths)
         m.write(output_path)
         eprint(f"Saved the generated musicxml at {output_path}")
@@ -492,8 +494,8 @@ def main() -> None:
         sys.exit(1)
     elif os.path.isfile(args.image):
         if args.image.lower().endswith(".pdf"):
-            dir = render_pdf_to_image(args.image)
-            homr_on_dir(dir, config, xml_generator_args)
+            directory = render_pdf_to_image(args.image)
+            homr_on_dir(directory, config, xml_generator_args)
         else:
             try:
                 process_image(args.image, config, xml_generator_args)

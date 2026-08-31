@@ -5,8 +5,8 @@ import numpy as np
 import pypdfium2 as pdfium
 
 from homr.autocrop import autocrop
-from homr.type_definitions import NDArray
 from homr.transformer.configs import root_dir
+
 
 def render_pdf_to_image(pdf_path: str, dpi: int = 300) -> str:
     "Renders a pdf to a folder and returns its path"
@@ -18,7 +18,6 @@ def render_pdf_to_image(pdf_path: str, dpi: int = 300) -> str:
     assert pdf, f"invalid PDF {pdf_path}"  # noqa: S101
     try:
         for i, page in enumerate(pdf):
-            print(os.path.join(output_path_base, f"{os.path.splitext(pdf_path)[0]}_{i}.png"))
             ouptut_path = os.path.join(output_path_base, f"{os.path.splitext(pdf_path)[0]}_{i}.png")
             bitmap = page.render(scale=scale)
             rgb = np.array(bitmap.to_pil().convert("RGB"))
