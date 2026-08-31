@@ -5,54 +5,52 @@ We thank Papoteur (https://github.com/papoteur-mga) and contributors for their w
 """
 
 import os
+import xml.etree.ElementTree as ET
 from glob import glob
 from pathlib import Path
-
-import musicxml.xmlelement.xmlelement as mxl  # type: ignore
-from musicxml.parser.parser import parse_musicxml  # type: ignore
 
 from homr.simple_logging import eprint
 
 
-def get_children_of_type(element, type_):
-    return [c for c in element.get_children() if isinstance(c, type_)]
+def get_children_of_type(element, tag_):
+    return element.findall(tag_)
 
 
 def clef_attributes(clef) -> dict[str]:  # type ignore
-    # take mxl.XMLClef
+    # take an ElementTree <clef> element
     attributes = {}
-    for a in get_children_of_type(clef, mxl.XMLSign):
-        attributes["Sign"] = a.value_
-    for a in get_children_of_type(clef, mxl.XMLSign):
-        attributes["Line"] = a.value_
-    for a in get_children_of_type(clef, mxl.XMLClefOctaveChange):
-        attributes["ClefOctaveChange"] = a.value_
+    for a in get_children_of_type(clef, "sign"):
+        attributes["Sign"] = a.text
+    for a in get_children_of_type(clef, "sign"):
+        attributes["Line"] = a.text
+    for a in get_children_of_type(clef, "clef-octave-change"):
+        attributes["ClefOctaveChange"] = a.text
     return attributes
 
 
 def time_attributes(time) -> dict[str]:  # type ignore
-    # take mxl.XMLTime
+    # take an ElementTree <time> element
     attributes = {}
-    for a in get_children_of_type(time, mxl.XMLBeats):
-        attributes["Beats"] = a.value_
-    for a in get_children_of_type(time, mxl.XMLBeatType):
-        attributes["BeatType"] = a.value_
-    for a in get_children_of_type(time, mxl.XMLInterchangeable):
-        attributes["Interchangeable"] = a.value_
-    for a in get_children_of_type(time, mxl.XMLSenzaMisura):
-        attributes["SenzaMisura"] = a.value_
+    for a in get_children_of_type(time, "beats"):
+        attributes["Beats"] = a.text
+    for a in get_children_of_type(time, "beat-type"):
+        attributes["BeatType"] = a.text
+    for a in get_children_of_type(time, "interchangeable"):
+        attributes["Interchangeable"] = a.text
+    for a in get_children_of_type(time, "senza-misura"):
+        attributes["SenzaMisura"] = a.text
     return attributes
 
 
 def key_attributes(key) -> dict[str]:  # type ignore
-    # take mxl.XMLKey
+    # take an ElementTree <key> element
     attributes = {}
-    for a in get_children_of_type(key, mxl.XMLFifths):
-        attributes["Fifths"] = a.value_
-    for a in get_children_of_type(key, mxl.XMLKeyAlter):
-        attributes["KeyAlter"] = a.value_
-    for a in get_children_of_type(key, mxl.XMLMode):
-        attributes["Mode"] = a.value_
+    for a in get_children_of_type(key, "fifths"):
+        attributes["Fifths"] = a.text
+    for a in get_children_of_type(key, "key-alter"):
+        attributes["KeyAlter"] = a.text
+    for a in get_children_of_type(key, "mode"):
+        attributes["Mode"] = a.text
     return attributes
 
 
@@ -67,79 +65,83 @@ def process_concat(
     # Main file is the first of the list
     main_file = sorted_list[0]
     eprint(f"Starting with {main_file}")
-    m = parse_musicxml(main_file)
+    m = ET.parse(main_file).getroot()
     # look for the last key and last divisions
     last_parts_attributes = []
     part1 = None  # Initialize part1 to avoid UnboundLocalError
-    for part1 in get_children_of_type(m, mxl.XMLPart):
+    for part1 in get_children_of_type(m, "part"):
         part_attributes = {}
-        for measure in get_children_of_type(part1, mxl.XMLMeasure):
-            for attrib in get_children_of_type(measure, mxl.XMLAttributes):
-                for div in get_children_of_type(attrib, mxl.XMLDivisions):
-                    part_attributes["Divisions"] = div.value_
-                for key in get_children_of_type(attrib, mxl.XMLKey):
+        for measure in get_children_of_type(part1, "measure"):
+            for attrib in get_children_of_type(measure, "attributes"):
+                for div in get_children_of_type(attrib, "divisions"):
+                    part_attributes["Divisions"] = div.text
+                for key in get_children_of_type(attrib, "key"):
                     part_attributes["Key"] = key_attributes(key)
-                for xtime in get_children_of_type(attrib, mxl.XMLTime):
+                for xtime in get_children_of_type(attrib, "time"):
                     part_attributes["Time"] = time_attributes(xtime)
-                for clef in get_children_of_type(attrib, mxl.XMLClef):
+                for clef in get_children_of_type(attrib, "clef"):
                     part_attributes["Clef"] = clef_attributes(clef)
         last_parts_attributes.append(part_attributes)
     for f in sorted_list[1:]:
         # new file to add
         if debug:
             eprint(f"Processing {f}")
-        b = parse_musicxml(f)
+        b = ET.parse(f).getroot()
         ip = 0
-        for part1 in get_children_of_type(m, mxl.XMLPart):
+        for part1 in get_children_of_type(m, "part"):
             # each part from the main score
-            current_len = len(get_children_of_type(part1, mxl.XMLMeasure))
+            current_len = len(get_children_of_type(part1, "measure"))
             if debug:
                 eprint(f"Main part has {current_len} measures")
             ib = 0
-            for part in get_children_of_type(b, mxl.XMLPart):
+            for part in get_children_of_type(b, "part"):
                 if ib == ip:
                     # we add the part of the new file having the same order
                     # as the part from the main score, else we pass
-                    for measure in get_children_of_type(part, mxl.XMLMeasure):
-                        new_number = str(int(measure.number) + current_len)
-                        if int(measure.number) == 1:
-                            for attrib in get_children_of_type(measure, mxl.XMLAttributes):
-                                for div in get_children_of_type(attrib, mxl.XMLDivisions):
-                                    if last_parts_attributes[ib]["Divisions"] == div.value_:
+                    for measure in get_children_of_type(part, "measure"):
+                        new_number = str(int(measure.get("number")) + current_len)
+                        if int(measure.get("number")) == 1:
+                            for attrib in get_children_of_type(measure, "attributes"):
+                                for div in get_children_of_type(attrib, "divisions"):
+                                    if last_parts_attributes[ib]["Divisions"] == div.text:
                                         attrib.remove(div)
                                         if debug:
                                             eprint(
                                                 f"Remove division at measure {new_number}, part {ib + 1}"  # noqa: E501
                                             )
-                                for key in get_children_of_type(attrib, mxl.XMLKey):
+                                for key in get_children_of_type(attrib, "key"):
                                     if last_parts_attributes[ib]["Key"] == key_attributes(key):
                                         if debug:
                                             eprint(
                                                 f"Remove key at measure {new_number} part {ib + 1}"
                                             )
                                         attrib.remove(key)
-                                for xtime in get_children_of_type(attrib, mxl.XMLTime):
+                                for xtime in get_children_of_type(attrib, "time"):
                                     if last_parts_attributes[ib]["Time"] == time_attributes(xtime):
                                         attrib.remove(xtime)
                                         if debug:
                                             eprint(
                                                 f"Remove time at measure {new_number} part {ib + 1}"
                                             )
-                                for clef in get_children_of_type(attrib, mxl.XMLClef):
+                                for clef in get_children_of_type(attrib, "clef"):
                                     if last_parts_attributes[ib]["Clef"] == clef_attributes(clef):
                                         attrib.remove(clef)
                                         if debug:
                                             eprint(
                                                 f"Remove clef at measure {new_number} part {ib + 1}"
                                             )
-                        measure.number = new_number
-                        part1.add_child(measure)
+                        measure.set("number", new_number)
+                        part1.append(measure)
                         if debug:
                             eprint(f"Added measure {new_number}, part {ib + 1}")
-                    current_len = len(get_children_of_type(part1, mxl.XMLMeasure))
+                    current_len = len(get_children_of_type(part1, "measure"))
                 ib += 1
             ip += 1
-    return m, len(sorted_list), len(get_children_of_type(part1, mxl.XMLMeasure)) if part1 else 0
+    return (
+        m,
+        len(sorted_list),
+        len(get_children_of_type(part1, "measure")) if part1 is not None else 0,
+    )
 
 
 def get_file_list(

@@ -387,7 +387,7 @@ def homr_on_dir(
     if len(xml_paths) > 1:
         output_path = os.path.join(directory, "merged_scores.musicxml")
         m, _, _ = process_concat(xml_paths)
-        m.write(output_path)
+        ET.ElementTree(m).write(output_path, encoding="UTF-8", xml_declaration=True)
         eprint(f"Saved the generated musicxml at {output_path}")
 
 
