@@ -65,7 +65,7 @@ def process_concat(
     # Main file is the first of the list
     main_file = sorted_list[0]
     eprint(f"Starting with {main_file}")
-    m = ET.parse(main_file).getroot()
+    m = ET.parse(main_file).getroot()  # noqa: S314
     # look for the last key and last divisions
     last_parts_attributes = []
     part1 = None  # Initialize part1 to avoid UnboundLocalError
@@ -86,7 +86,7 @@ def process_concat(
         # new file to add
         if debug:
             eprint(f"Processing {f}")
-        b = ET.parse(f).getroot()
+        b = ET.parse(f).getroot()  # noqa: S314
         ip = 0
         for part1 in get_children_of_type(m, "part"):
             # each part from the main score
