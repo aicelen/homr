@@ -44,6 +44,8 @@ from homr.staff_position_save_load import load_staff_positions, save_staff_posit
 from homr.title_detection import detect_title, download_ocr_weights
 from homr.transformer.configs import Config, default_config
 from homr.type_definitions import NDArray
+from homr.relieur import process_concat
+from homr.transformer.configs import root_dir
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
@@ -175,11 +177,8 @@ def process_image(
     image_path: str,
     config: ProcessingConfig,
     xml_generator_args: XmlGeneratorArguments,
-) -> None:
+) -> str:
     eprint("Processing " + image_path)
-    if image_path.lower().endswith(".pdf"):
-        render_pdf_to_image(image_path)
-        image_path = replace_extension(image_path, ".png")
     xml_file = replace_extension(image_path, ".musicxml")
     debug_cleanup: Debug | None = None
     try:
@@ -239,6 +238,7 @@ def process_image(
     finally:
         if debug_cleanup is not None:
             debug_cleanup.clean_debug_files_from_previous_runs()
+    return xml_file
 
 
 def detect_staffs_in_image(
@@ -366,6 +366,28 @@ def download_weights(segnet_use_gpu: bool, transformer_use_gpu: bool, coreml_enc
                 if os.path.exists(downloaded_zip):
                     os.remove(downloaded_zip)
 
+def homr_on_dir(dir: str, config, xml_generator_args):
+    image_files = get_all_image_files_in_folder(dir)
+    eprint("Processing", len(image_files), "files:", image_files)
+    error_files = []
+    xml_paths = []
+    for image_file in image_files:
+        eprint("=========================================")
+        try:
+            xml_paths.append(process_image(image_file, config, xml_generator_args))
+            eprint("Finished", image_file)
+        except Exception as e:
+            eprint(f"An error occurred while processing {image_file}: {e}")
+            error_files.append(image_file)
+    if len(error_files) > 0:
+        eprint("Errors occurred while processing the following files:", error_files)
+
+    if len (xml_paths) > 1:
+        output_path = os.path.join(dir, "merged_scores.musicxml")
+        m, _, _ = process_concat(xml_paths)
+        m.write(output_path)
+        eprint(f"Saved the generated musicxml at {output_path}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -469,25 +491,17 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
     elif os.path.isfile(args.image):
-        try:
-            process_image(args.image, config, xml_generator_args)
-        except InvalidProgramArgumentException as e:
-            eprint(str(e))
-            sys.exit(2)
-    elif os.path.isdir(args.image):
-        image_files = get_all_image_files_in_folder(args.image)
-        eprint("Processing", len(image_files), "files:", image_files)
-        error_files = []
-        for image_file in image_files:
-            eprint("=========================================")
+        if args.image.lower().endswith(".pdf"):
+            dir = render_pdf_to_image(args.image)
+            homr_on_dir(dir, config, xml_generator_args)
+        else:
             try:
-                process_image(image_file, config, xml_generator_args)
-                eprint("Finished", image_file)
-            except Exception as e:
-                eprint(f"An error occurred while processing {image_file}: {e}")
-                error_files.append(image_file)
-        if len(error_files) > 0:
-            eprint("Errors occurred while processing the following files:", error_files)
+                process_image(args.image, config, xml_generator_args)
+            except InvalidProgramArgumentException as e:
+                eprint(str(e))
+                sys.exit(2)
+    elif os.path.isdir(args.image):
+        homr_on_dir(args.image, config, xml_generator_args)
     else:
         eprint(f"{args.image} is not a valid file or directory")
         sys.exit(2)
