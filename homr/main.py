@@ -412,6 +412,30 @@ def homr_on_dir(
         ET.ElementTree(m).write(output_path, encoding="UTF-8", xml_declaration=True)
         eprint(f"Saved the generated musicxml at {output_path}")
 
+def homr_on_list(
+    images: list, config: ProcessingConfig, xml_generator_args: XmlGeneratorArguments
+) -> None:
+    eprint("Processing", len(images), "files:", images)
+    error_files = []
+    xml_paths = []
+    for image_file in images:
+        eprint("=========================================")
+        try:
+            xml_paths.append(process_image(image_file, config, xml_generator_args))
+            eprint("Finished", image_file)
+        except Exception as e:
+            eprint(f"An error occurred while processing {image_file}: {e}")
+            error_files.append(image_file)
+
+    if len(error_files) > 0:
+        eprint("Errors occurred while processing the following files:", error_files)
+
+    if len(xml_paths) > 1:
+        output_path = os.path.join("merged_scores.musicxml")
+        m, _, _ = process_concat(xml_paths)
+        ET.ElementTree(m).write(output_path, encoding="UTF-8", xml_declaration=True)
+        eprint(f"Saved the generated musicxml at {output_path}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -523,8 +547,8 @@ def main() -> None:
         sys.exit(1)
     elif os.path.isfile(args.image):
         if args.image.lower().endswith(".pdf"):
-            directory = render_pdf_to_image(args.image)
-            homr_on_dir(directory, config, xml_generator_args)
+            images = render_pdf_to_image(args.image)
+            homr_on_list(images, config, xml_generator_args)
         else:
             try:
                 process_image(args.image, config, xml_generator_args)
