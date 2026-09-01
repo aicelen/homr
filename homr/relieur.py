@@ -174,4 +174,4 @@ def get_file_list(
     if len(sorted_list) == 0:
         eprint(f"No files found for {concat}")
         return None
-    return sorted(sorted_list)
+    return sorted_list

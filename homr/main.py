@@ -43,7 +43,7 @@ from homr.staff_detection import break_wide_fragments, detect_staff, make_lines_
 from homr.staff_parsing import parse_staffs
 from homr.staff_position_save_load import load_staff_positions, save_staff_positions
 from homr.title_detection import detect_title, download_ocr_weights
-from homr.transformer.configs import Config, default_config
+from homr.transformer.configs import Config, default_config, root_dir
 from homr.type_definitions import NDArray
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -366,28 +366,33 @@ def download_weights(segnet_use_gpu: bool, transformer_use_gpu: bool, coreml_enc
                     os.remove(downloaded_zip)
 
 
-def homr_on_dir(
-    directory: str, config: ProcessingConfig, xml_generator_args: XmlGeneratorArguments
+def run_homr(
+    images: list, config: ProcessingConfig, xml_generator_args: XmlGeneratorArguments
 ) -> None:
-    image_files = get_all_image_files_in_folder(directory)
-    eprint("Processing", len(image_files), "files:", image_files)
-    error_files = []
+    """
+    Runs homr on all images in a list and merges them into musicxml using relieur
+    """
+    eprint("Merging", len(images), "files:", images)
     xml_paths = []
-    for image_file in image_files:
+    filename = os.path.splitext(os.path.basename(images[0]))[0]
+    for image_file in images:
         eprint("=========================================")
         try:
             xml_paths.append(process_image(image_file, config, xml_generator_args))
             eprint("Finished", image_file)
         except Exception as e:
             eprint(f"An error occurred while processing {image_file}: {e}")
-            error_files.append(image_file)
-    if len(error_files) > 0:
-        eprint("Errors occurred while processing the following files:", error_files)
+            return  # Don't need to continue (save time)
 
-    if len(xml_paths) > 1:
-        output_path = os.path.join(directory, "merged_scores.musicxml")
+    if len(xml_paths) == len(images) and len(xml_paths) > 1:
+        output_path = os.path.join(root_dir, f"{filename}_merged.musicxml")
         m, _, _ = process_concat(xml_paths)
         ET.ElementTree(m).write(output_path, encoding="UTF-8", xml_declaration=True)
+
+        for path in xml_paths:
+            if os.path.exists(path):
+                os.remove(path)
+
         eprint(f"Saved the generated musicxml at {output_path}")
 
 
@@ -395,7 +400,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="homer", description="An optical music recognition (OMR) system"
     )
-    parser.add_argument("image", type=str, nargs="?", help="Path to the image to process")
+    parser.add_argument("image", type=str, nargs="+", help="Path to the image to process")
     parser.add_argument(
         "--init",
         action="store_true",
@@ -492,21 +497,44 @@ def main() -> None:
         eprint("No image provided")
         parser.print_help()
         sys.exit(1)
-    elif os.path.isfile(args.image):
-        if args.image.lower().endswith(".pdf"):
-            directory = render_pdf_to_image(args.image)
-            homr_on_dir(directory, config, xml_generator_args)
+
+    images_to_combine = []
+    for image in args.image:
+        if os.path.isfile(image):
+            # Multiple files are getting merged
+            if image.lower().endswith(".pdf"):
+                images_to_combine += render_pdf_to_image(image)
+            else:
+                images_to_combine.append(image)
+
+        elif os.path.isdir(image):
+            # Directories are never merged
+            image_files = get_all_image_files_in_folder(image)
+            eprint("Processing", len(image_files), "files:", image_files)
+            error_files = []
+            for image_file in image_files:
+                eprint("=========================================")
+                try:
+                    process_image(image_file, config, xml_generator_args)
+                    eprint("Finished", image_file)
+                except Exception as e:
+                    eprint(f"An error occurred while processing {image_file}: {e}")
+                    error_files.append(image_file)
+            if len(error_files) > 0:
+                eprint("Errors occurred while processing the following files:", error_files)
+
         else:
-            try:
-                process_image(args.image, config, xml_generator_args)
-            except InvalidProgramArgumentException as e:
-                eprint(str(e))
-                sys.exit(2)
-    elif os.path.isdir(args.image):
-        homr_on_dir(args.image, config, xml_generator_args)
-    else:
-        eprint(f"{args.image} is not a valid file or directory")
-        sys.exit(2)
+            eprint(f"{image} is not a valid file or directory")
+            sys.exit(2)
+
+    # Check if we have any images
+    if images_to_combine:
+        # After collectiong all images we run homr on them
+        try:
+            run_homr(images_to_combine, config, xml_generator_args)
+        except InvalidProgramArgumentException as e:
+            eprint(str(e))
+            sys.exit(2)
 
 
 if __name__ == "__main__":
