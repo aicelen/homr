@@ -194,6 +194,7 @@ def process_image(
     image_path: str,
     config: ProcessingConfig,
     xml_generator_args: XmlGeneratorArguments,
+    page_name: str = None,
 ) -> str:
     eprint("Processing " + image_path)
     xml_file = replace_extension(image_path, ".musicxml")
@@ -218,6 +219,7 @@ def process_image(
         else:
             multi_staffs, image, debug, title_future, _ = detect_staffs_in_image(image_path, config)
         debug_cleanup = debug
+        debug.db_page_name = page_name
 
         transformer_config = Config()
         transformer_config.use_gpu_inference = config.transformer_use_gpu
@@ -234,20 +236,22 @@ def process_image(
         if not config.read_staff_positions:
             title = title_future.result(60)
         eprint("Found title:", title)
+        if debug.data_gen:
+            return
+        else:
+            eprint("Writing XML", result_staffs)
+            xml = generate_xml(xml_generator_args, result_staffs, title)
+            ET.ElementTree(xml).write(xml_file, encoding="unicode", xml_declaration=True)
 
-        eprint("Writing XML", result_staffs)
-        xml = generate_xml(xml_generator_args, result_staffs, title)
-        ET.ElementTree(xml).write(xml_file, encoding="unicode", xml_declaration=True)
+            eprint("Finished parsing " + str(len(result_staffs)) + " staves")
+            teaser_file = replace_extension(image_path, "_teaser.png")
+            if config.write_staff_positions:
+                staff_position_files = replace_extension(image_path, ".txt")
+                save_staff_positions(multi_staffs, image.shape, staff_position_files)
+            debug.write_teaser(teaser_file, multi_staffs)
+            debug.clean_debug_files_from_previous_runs()
 
-        eprint("Finished parsing " + str(len(result_staffs)) + " staves")
-        teaser_file = replace_extension(image_path, "_teaser.png")
-        if config.write_staff_positions:
-            staff_position_files = replace_extension(image_path, ".txt")
-            save_staff_positions(multi_staffs, image.shape, staff_position_files)
-        debug.write_teaser(teaser_file, multi_staffs)
-        debug.clean_debug_files_from_previous_runs()
-
-        eprint("Result was written to", xml_file)
+            eprint("Result was written to", xml_file)
     except:
         if os.path.exists(xml_file):
             os.remove(xml_file)
@@ -418,23 +422,28 @@ def homr_on_list(
     eprint("Processing", len(images), "files:", images)
     error_files = []
     xml_paths = []
-    for image_file in images:
+    for i, image_file in enumerate(images):
         eprint("=========================================")
+        if config.data_gen == -1:
+            page_name = None
+        else:
+            page_name = f"score_{config.data_gen}_page_{i}"
         try:
-            xml_paths.append(process_image(image_file, config, xml_generator_args))
+            xml_paths.append(process_image(image_file, config, xml_generator_args, page_name))
             eprint("Finished", image_file)
         except Exception as e:
             eprint(f"An error occurred while processing {image_file}: {e}")
             error_files.append(image_file)
 
-    if len(error_files) > 0:
-        eprint("Errors occurred while processing the following files:", error_files)
+        if len(error_files) > 0:
+            eprint("Errors occurred while processing the following files:", error_files)
 
-    if len(xml_paths) > 1:
-        output_path = os.path.join("merged_scores.musicxml")
-        m, _, _ = process_concat(xml_paths)
-        ET.ElementTree(m).write(output_path, encoding="UTF-8", xml_declaration=True)
-        eprint(f"Saved the generated musicxml at {output_path}")
+        # Don't run this in datagen mode
+        if len(xml_paths) > 1 and config.data_gen == -1:
+            output_path = os.path.join("merged_scores.musicxml")
+            m, _, _ = process_concat(xml_paths)
+            ET.ElementTree(m).write(output_path, encoding="UTF-8", xml_declaration=True)
+            eprint(f"Saved the generated musicxml at {output_path}")
 
 
 def main() -> None:

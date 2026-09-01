@@ -314,7 +314,7 @@ def parse_staff_image(
     if debug.data_gen:
         result = []
         path_to_staff = os.path.join(
-            datagen_path, f"page_{debug.db_page_index}", f"staff_{index}.png"
+            datagen_path, debug.db_page_name, f"staff_{index}.png"
         )
         os.makedirs(os.path.dirname(path_to_staff), exist_ok=True)
         cv2.imwrite(path_to_staff, staff_image)
@@ -380,5 +380,5 @@ def parse_staffs(
 
         voices.append(remove_duplicated_symbols(result_for_voice))
     if debug.data_gen:
-        sys.exit()
+        return []
     return voices

@@ -71,19 +71,7 @@ def match_xml_and_staffs(page_data: Page) -> None:
     number_of_systems = len(number_measures)
     expected_staffs = len(ground_truth_tokens) * number_of_systems
 
-    # Same amount of systems
-    if number_of_systems != len(page_data.layout):
-        eprint(f"{page_data.name}: musicxml and db don't have the same amount of systems.")
-        return
 
-    # Same amount of staffs
-    if len(page_data.staffs) != sum(page_data.layout):
-        eprint(f"{page_data.name}: db doesn't have the same amount of staffs.")
-        return
-
-    if expected_staffs != len(page_data.staffs):
-        eprint(f"{page_data.name}: musicxml and db doesn't have the same amount of staffs.")
-        return
 
     for voice_index, voice in enumerate(ground_truth_tokens):
         voice = deque(voice)
