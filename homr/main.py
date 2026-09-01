@@ -400,7 +400,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="homer", description="An optical music recognition (OMR) system"
     )
-    parser.add_argument("image", type=str, nargs="+", help="Path to the image to process")
+    parser.add_argument("image", type=str, nargs="*", help="Path to the image to process")
     parser.add_argument(
         "--init",
         action="store_true",
