@@ -517,7 +517,11 @@ def main() -> None:
             for image_file in image_files:
                 eprint("=========================================")
                 try:
-                    process_image(image_file, config, xml_generator_args)
+                    if image_file.lower().endswith(".pdf"):
+                        rendered_images = render_pdf_to_image(image_file)
+                        run_homr(rendered_images, config, xml_generator_args)
+                    else:
+                        process_image(image_file, config, xml_generator_args)
                     eprint("Finished", image_file)
                 except Exception as e:
                     eprint(f"An error occurred while processing {image_file}: {e}")
