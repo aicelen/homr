@@ -1,6 +1,6 @@
 # homr
 
-homr is an Optical Music Recognition (OMR) software designed to transform camera pictures of sheet music into
+homr is an Optical Music Recognition (OMR) software designed to transform camera pictures or PDFs of sheet music into
 machine-readable MusicXML format. The resulting [MusicXML](https://www.w3.org/2021/06/musicxml40/) files can be further
 processed using tools such as [musescore](https://musescore.com/).
 
@@ -23,9 +23,7 @@ The easiest way to get started is using `uvx` (`uv` must be installed). Select a
 - NVIDIA CUDA: `uvx --from 'homr[cuda]' homr <image>`
 - AMD ROCm: `uvx --python 3.12 --from 'homr[rocm]' homr <image>`
 
-Then see the resulting MusicXML:
-- It will be saved in the same directory as the input image
-- To combine the MusicXML results from multiple images, you can use [relieur](https://github.com/papoteur-mga/relieur)
+- The resulting MusicXML file will be saved in the same directory as the input image
 
 ## Getting started (poetry)
 
@@ -36,7 +34,11 @@ Then see the resulting MusicXML:
   - If using GPU, replace `--extras cpu` to `--extras cuda` / `--extras rocm`
 - Run the program using `poetry run homr <image>`
 - The resulting MusicXML file will be saved in the same directory as the input image
-- To combine the MusicXML results from multiple images, you can use [relieur](https://github.com/papoteur-mga/relieur)
+
+## Run on multiple images
+- Just add your image to the command, for example: `poetry run homr <image_1> <image_2>`
+- This produces one file named `merged_image_1.musicxml`
+- To combine MusicXML files, you can use [relieur](https://github.com/papoteur-mga/relieur)
 
 ## Example
 

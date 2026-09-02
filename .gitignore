@@ -42,6 +42,7 @@ _build/
 /*.npy
 /*.musicxml
 /testdata
+/generated_pdf
 /examples
 /canon
 *_try_*
