@@ -25,6 +25,7 @@ class ScoreTransformerWrapper(nn.Module):
         self,
         config: Config,
         attn_layers: Any,
+        pretraining: bool = False,
         l2norm_embed: bool = False,
     ) -> None:
         super().__init__()
@@ -33,6 +34,7 @@ class ScoreTransformerWrapper(nn.Module):
 
         dim = attn_layers.dim
         self.max_seq_len = config.max_seq_len
+        self.pretraining = pretraining
         self.l2norm_embed = l2norm_embed
         self.lift_emb = TokenEmbedding(
             config.decoder_dim, config.num_lift_tokens, l2norm_embed=l2norm_embed
@@ -112,8 +114,11 @@ class ScoreTransformerWrapper(nn.Module):
             )
 
             x = self.post_emb_norm(x)
-
-            if return_center_of_attention:
+            if self.pretraining:
+                x = self.attn_layers(x, mask=mask, return_hiddens=False, **kwargs)
+                attention = None
+            
+            elif return_center_of_attention:
                 x, hiddens = self.attn_layers(x, mask=mask, return_hiddens=True, **kwargs)
                 attention = self.get_center_of_attention(hiddens.attn_intermediates)
             else:
@@ -157,9 +162,15 @@ class ScoreTransformerWrapper(nn.Module):
 
             cache_input = LayerIntermediates(attn_intermediates=inters, cache_length=cache_len)
 
-            x, cache = self.attn_layers(
-                x, cache=cache_input, mask=mask, return_hiddens=True, context=context
-            )
+            if self.pretraining:
+                x, cache = self.attn_layers(
+                    x, cache=cache_input, mask=mask, return_hiddens=True
+                )
+
+            else:
+                x, cache = self.attn_layers(
+                    x, cache=cache_input, mask=mask, return_hiddens=True, context=context
+                )
 
             # get the kv cache tensors from the LayerIntermediates class
             # the cache is built up like this:
@@ -593,6 +604,12 @@ def get_decoder(config: Config) -> ScoreDecoder:
         config=config,
     )
 
+def get_decoder_prertaining(config: Config) -> ScoreDecoder:
+    return ScoreDecoder(
+        get_score_wrapper_pre_training(config),
+        config=config,
+    )
+
 
 def get_score_wrapper(config: Config, attn_flash: bool = True) -> ScoreTransformerWrapper:
     return ScoreTransformerWrapper(
@@ -606,6 +623,18 @@ def get_score_wrapper(config: Config, attn_flash: bool = True) -> ScoreTransform
         ),
     )
 
+def get_score_wrapper_pre_training(config: Config, attn_flash: bool = True) -> ScoreTransformerWrapper:
+    return ScoreTransformerWrapper(
+        config=config,
+        pretraining=True,
+        attn_layers=CustomDecoder(
+            dim=config.decoder_dim,
+            depth=config.decoder_depth,
+            heads=config.decoder_heads,
+            attn_flash=attn_flash,
+            **config.decoder_pre_training_args.to_dict(),
+        ),
+    )
 
 def detokenize(tokens: torch.Tensor, vocab: Any) -> list[str]:
     toks = [vocab[tok.item()] for tok in tokens]

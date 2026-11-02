@@ -81,6 +81,11 @@ class DecoderArgs:
     def to_json_string(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
 
+class DecoderPreArgs(DecoderArgs):
+    def __init__(self) -> None:
+        super().__init__()
+        self.cross_attend = False
+ 
 
 class Config:
     def __init__(self) -> None:
@@ -113,6 +118,7 @@ class Config:
         self.decoder_depth = 8
         self.decoder_heads = 8
         self.decoder_args = DecoderArgs()
+        self.decoder_pre_training_args = DecoderPreArgs()
         self.lift_vocab = self.vocab.lift
         self.pitch_vocab = self.vocab.pitch
         self.rhythm_vocab = self.vocab.rhythm
