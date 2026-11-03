@@ -33,26 +33,26 @@ def find_tokens() -> tuple[VocabularyStats, set[str]]:
 
 
 def remove_entry_from_train_index(file_path: str, files: set[str]) -> None:
+    if not files:
+        return
+
     for file in files:
-        if os.path.exists(file):
+        try:
             os.remove(file)
             eprint(f"removing {file}")
+        except FileNotFoundError:
+            pass
 
+    normalized = {os.path.normpath(f) for f in files}
     temp_filename = file_path + ".tmp"
 
-    with open(file_path, "r") as f:
-        lines = f.readlines()
-
-    kept_lines = [
-        line
-        for line in lines
-        if not any(os.path.normpath(item) in os.path.normpath(line) for item in files)
-    ]
-
-    with open(temp_filename, "w") as f:
-        f.writelines(kept_lines)
+    with open(file_path, "r") as src, open(temp_filename, "w") as dst:
+        for line in src:
+            if os.path.normpath(line.rstrip("\n")) not in normalized:
+                dst.write(line)
 
     os.replace(temp_filename, file_path)
+    print("Finished overwriting index")
 
 
 def remove_tokens(indexes: list[str]) -> None:

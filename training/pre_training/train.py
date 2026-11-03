@@ -34,6 +34,7 @@ def load_training_index(file_path: str) -> list[str]:
 
 def check_data_source(all_file_paths: list[str]) -> bool:
     result = True
+    c = 0
     for file_paths in all_file_paths:
         paths = file_paths.strip().split(",")
         for path in paths:
@@ -42,6 +43,8 @@ def check_data_source(all_file_paths: list[str]) -> bool:
             if not os.path.exists(path):
                 eprint(f"Index {file_paths} does not exist due to {path}")
                 result = False
+                c += 1
+    print(c)
     return result
 
 
@@ -94,7 +97,7 @@ def train_transformer(
             shutil.rmtree(os.path.join(git_root, checkpoint_folder))
 
     dataset_index = [
-        pdmx_pretrain_index,
+        pdmx_pretrain_index
     ]
     dataset_weights = [1.0]
     if distribute.is_rank0():
