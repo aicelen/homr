@@ -256,10 +256,13 @@ def read_token_lines(lines: list[str]) -> list[EncodedSymbol]:
 
 
 def read_tokens(filepath: str) -> list[EncodedSymbol]:
-    with open(filepath, encoding="utf-8") as f:
-        lines = f.readlines()
-        return read_token_lines(lines)
-
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            lines = f.readlines()
+            return read_token_lines(lines)
+    except Exception as e:
+        print(e)
+        print(filepath)
 
 class DecoderBranches:
     def __init__(

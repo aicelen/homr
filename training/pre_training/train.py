@@ -18,10 +18,10 @@ from training.omr_datasets.convert_pdmx import convert_pdmx, pdmx_pretrain_index
 
 from training.omr_datasets.filter_from_index import remove_tokens
 from training.run_id import get_run_id
-from training.transformer.data_loader import label_names, load_dataset
-from training.transformer.distribute import Distribute
-from training.transformer.metrics import HomrTrainer
-from training.transformer.mix_datasets import mix_training_sets
+from training.pre_training.data_loader import label_names, load_dataset
+from training.pre_training.distribute import Distribute
+from training.pre_training.metrics import HomrTrainer
+from training.pre_training.mix_datasets import mix_training_sets
 
 torch._dynamo.config.suppress_errors = True
 
@@ -34,7 +34,6 @@ def load_training_index(file_path: str) -> list[str]:
 
 def check_data_source(all_file_paths: list[str]) -> bool:
     result = True
-    c = 0
     for file_paths in all_file_paths:
         paths = file_paths.strip().split(",")
         for path in paths:
@@ -43,8 +42,6 @@ def check_data_source(all_file_paths: list[str]) -> bool:
             if not os.path.exists(path):
                 eprint(f"Index {file_paths} does not exist due to {path}")
                 result = False
-                c += 1
-    print(c)
     return result
 
 
@@ -101,7 +98,8 @@ def train_transformer(
     ]
     dataset_weights = [1.0]
     if distribute.is_rank0():
-        _check_datasets_are_present(dataset_index)
+        #_check_datasets_are_present(dataset_index)
+        pass
     distribute.barrier()
 
     number_of_files = -1
@@ -123,7 +121,7 @@ def train_transformer(
 
     run_id = get_run_id()
 
-    batch_size = 8  # 8gb vram
+    batch_size = 24  # 8gb vram
 
     train_args = TrainingArguments(
         checkpoint_folder,
@@ -132,7 +130,7 @@ def train_transformer(
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
         optim="adamw_torch_fused",
-        gradient_accumulation_steps=max(1, 4 // distribute.get_world_size()),
+        gradient_accumulation_steps=2,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size // 2,
         num_train_epochs=number_of_epochs,

@@ -87,7 +87,7 @@ def _filter_valid_samples(samples: list[str]) -> list[str]:
     filter_count = 0
     too_long_count = 0
     for entry in samples:
-        image, token_file = entry.strip().split(",")
+        token_file = entry.strip()
         tokens = read_tokens(token_file)
         if len(tokens) > default_config.max_seq_len - 2:
             too_long_count += 1
@@ -95,7 +95,7 @@ def _filter_valid_samples(samples: list[str]) -> list[str]:
         if max_ledger_lines(tokens) > MAX_ALLOWED_LEDGER_LINES:
             filter_count += 1
             continue
-        valid_samples.append(entry)
+        valid_samples.append(token_file)
 
     if filter_count > 0:
         eprint(f"Filtered out {filter_count} samples with too many ledger lines")
