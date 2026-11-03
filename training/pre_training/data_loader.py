@@ -38,17 +38,10 @@ class DataLoader:
         config: Config,
         is_validation: bool = False,
     ) -> None:
-        self.corpus_list = self._add_mask_steps(corpus_list)
+        self.corpus_list = corpus_list
         self.vocab = Vocabulary()
         self.config = config
         self.is_validation = is_validation
-
-    def _add_mask_steps(self, corpus_list: list[str]) -> Any:
-        result = []
-        for entry in corpus_list:
-            image, token_file = entry.strip().split(",")
-            result.append({"image": image, "tokens": token_file})
-        return result
 
     def __len__(self) -> int:
         return len(self.corpus_list)
@@ -59,13 +52,7 @@ class DataLoader:
 
     def __getitem__(self, idx: int) -> Any:
         entry = self.corpus_list[idx]
-        sample_filepath = os.path.join(git_root, entry["image"])
-
-        try:
-            img = read_image_to_ndarray(sample_filepath)
-        except ValueError:
-            eprint(f"Warning: skipping corrupted image {sample_filepath}")
-            return self.__getitem__((idx + 1) % len(self))
+        sample_filepath = os.path.join(git_root, entry)
 
         if self.is_validation:
             state = random.getstate()
@@ -73,23 +60,14 @@ class DataLoader:
             random.seed(idx)
             np.random.seed(idx)
 
-        img = distort_image(img, allow_occlusions=not self.is_validation)
-        img = add_image_into_tr_omr_canvas(img)
-
-        if self.is_validation:
             random.setstate(state)
             np.random.set_state(np_state)
 
-        img = prepare_for_tensor(img)
-        sample_img = ndarray_to_tensor(img)
-        sample_img = pad_to_3_dims(sample_img)
-
-        tokens_full_filepath = entry["tokens"]
-        tokens = self._read_tokens(tokens_full_filepath)
+        tokens = self._read_tokens(sample_filepath)
 
         # Remember to extend label_names if you add something to the results
         result = {
-            "inputs": sample_img,
+            # "inputs": sample_img,
             "rhythms": tokens.rhythms,
             "pitchs": tokens.pitchs,
             "lifts": tokens.lifts,
