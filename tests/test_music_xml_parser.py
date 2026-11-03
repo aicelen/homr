@@ -164,6 +164,48 @@ note_2 E4 _ _ slurStart upper2&note_2 C2 _ _ _ lower
 barline . . . . ."""
         self.assertEqual(token_str, expected)
 
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)
+
     def test_tuplet_end_in_chord(self) -> None:
         self.maxDiff = None
         # lc6258930.musicxml, measure 24
@@ -456,6 +498,48 @@ note_4 A4 _ _ slurStop upper2&note_4 F4 # _ _ upper2&note_4 B3 _ _ _ lower&note_
 barline . . . . ."""
         self.assertEqual(token_str, expected)
 
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)
+
     def test_arpeggiate(self) -> None:
         """Arpeggio on one staff shouldn't be propagated to the other
         one that starts on the same beat. It still should be filled in across
@@ -514,6 +598,48 @@ note_1 D5 _ _ _ upper&note_1 D4 _ _ _ upper&note_1 B3 _ arpeggiate _ lower&note_
 barline . . . . ."""
         self.assertEqual(token_str, expected)
 
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)
+
     def test_two_voices_on_one_staff(self) -> None:
         """The first visible voice of a staff is the main voice, the others get a "2"
         suffix. Here voice 2 is written before voice 1 and voice 3 is folded into
@@ -561,6 +687,48 @@ note_1 G4 _ _ _ upper2&note_2 E4 _ _ _ upper&note_1 C4 _ _ _ upper2
 note_2 D4 _ _ _ upper
 barline . . . . ."""
         self.assertEqual(token_str, expected)
+
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)
 
     def test_stem_up_voice_is_main_voice(self) -> None:
         """If the first voice has stems down and exactly one other voice has stems up,
@@ -947,6 +1115,48 @@ note_2 D5 _ _ _ upper
 barline . . . . ."""
         self.assertEqual(token_str, expected)
 
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)
+
     def test_grandstaff_and_only_piu(self) -> None:
         """
         On a grand staff, the upper staff has two dynamics (pp and f) with an invalid
@@ -1015,3 +1225,87 @@ dynamic_pp _ _ _ _ upper&dynamic_f _ _ _ _ upper&dynamic_empty _ _ dynamic_piu _
 note_2 D5 _ _ _ upper&note_2 D3 _ _ _ lower
 barline . . . . ."""
         self.assertEqual(token_str, expected)
+
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)
+
+    def test_new_system_and_new_page(self) -> None:
+        example = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <print new-system="yes"/>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <print new-page="yes"/>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>1</duration><type>quarter</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+        voices = music_xml_string_to_tokens(example)
+        self.assertEqual(len(voices), 1)
+        measures = voices[0]
+        self.assertEqual(len(measures), 3)
+        self.assertFalse(measures[0].new_system)
+        self.assertFalse(measures[0].new_page)
+        self.assertTrue(measures[1].new_system)
+        self.assertFalse(measures[1].new_page)
+        self.assertTrue(measures[2].new_system)
+        self.assertTrue(measures[2].new_page)

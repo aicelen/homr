@@ -69,6 +69,7 @@ class Measure(list[EncodedSymbol]):
         """Initialize Measure from an iterable of EncodedSymbol objects."""
         super().__init__(iterable)
         self.new_page = False
+        self.new_system = False
 
     @overload
     def __setitem__(self, index: SupportsIndex, item: EncodedSymbol, /) -> None: ...
@@ -96,6 +97,8 @@ class Measure(list[EncodedSymbol]):
     def __add__(self, other: list, /) -> "Measure | list":
         """Return a new Measure combining this one with another list."""
         result = Measure(self)
+        result.new_page = self.new_page
+        result.new_system = self.new_system
         result.extend(other)
         return result
 
@@ -160,6 +163,7 @@ class TokensMeasure:
         self.graces_at: dict[tuple[int, int], int] = {}  # (staff, position) -> grace notes so far
         self.current_position = 0
         self.new_page = False
+        self.new_system = False
 
     def append_symbol(self, symbol: EncodedSymbol) -> None:
         if symbol.rhythm.startswith("note"):
@@ -171,6 +175,13 @@ class TokensMeasure:
 
     def mark_new_page(self) -> None:
         self.new_page = True
+
+    def mark_new_system(self) -> None:
+        self.new_system = True
+
+    def make_new_system(self) -> None:
+        self.mark_new_system()
+
 
     def append_symbol_to_staff(self, staff: int, symbol: EncodedSymbol) -> None:
         if has_rhythm_symbol_a_position(symbol.rhythm):
@@ -320,6 +331,7 @@ class TokensMeasure:
             merged_symbols.append(EncodedSymbol("barline"))
         result_measure = Measure(merged_symbols)
         result_measure.new_page = self.new_page
+        result_measure.new_system = self.new_system
         return result_measure
 
 
@@ -449,6 +461,14 @@ class TokensPart:
     def mark_new_page(self) -> None:
         self._flush_pending_clefs()
         self._ensure_current_measure().mark_new_page()
+
+    def mark_new_system(self) -> None:
+        self._flush_pending_clefs()
+        self._ensure_current_measure().mark_new_system()
+
+    def make_new_system(self) -> None:
+        self.mark_new_system()
+
 
     def append_rest(
         self,
@@ -813,6 +833,9 @@ def _process_barline(part: TokensPart, barline: ET.Element) -> None:
 
 def _process_print(part: TokensPart, xmlprint: ET.Element) -> None:
     new_page = xmlprint.get("new-page", "")
+    new_system = xmlprint.get("new-system", "")
+    if new_system == "yes" or new_page == "yes":
+        part.mark_new_system()
     if new_page == "yes":
         part.mark_new_page()
 

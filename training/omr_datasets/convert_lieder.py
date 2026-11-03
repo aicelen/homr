@@ -114,6 +114,55 @@ def split_into_pages(voices: list[list[Measure]]) -> list[MusicXmlPage]:
     return pages
 
 
+def split_into_page_and_system_measures(voices: list[list[Measure]]) -> list[list[int]]:
+    """Determine measure counts for each system on each page based on new_page and new_system.
+
+    Returns:
+        A list of pages, where each page is a list of measure counts for each system on that page.
+    """
+    if not voices or not voices[0]:
+        return []
+
+    # Validate all voices have the same length
+    first_voice_len = len(voices[0])
+    for i, voice in enumerate(voices[1:], start=1):
+        if len(voice) != first_voice_len:
+            raise ValueError(
+                f"Voice {i} has {len(voice)} measures, but voice 0 has {first_voice_len} measures. "
+                "All voices must have the same number of measures."
+            )
+
+    # Page breaks: measure index where each page starts
+    page_breaks = [0]
+    for measure_idx, measure in enumerate(voices[0]):
+        if hasattr(measure, "new_page") and measure.new_page and measure_idx > 0:
+            page_breaks.append(measure_idx)
+    page_breaks.append(first_voice_len)
+
+    pages_systems: list[list[int]] = []
+    for i in range(len(page_breaks) - 1):
+        page_start = page_breaks[i]
+        page_end = page_breaks[i + 1]
+
+        # System breaks on this page
+        system_breaks = [page_start]
+        for m_idx in range(page_start + 1, page_end):
+            if any(
+                hasattr(voice[m_idx], "new_system") and voice[m_idx].new_system
+                for voice in voices
+            ):
+                system_breaks.append(m_idx)
+        system_breaks.append(page_end)
+
+        systems = [
+            system_breaks[k + 1] - system_breaks[k]
+            for k in range(len(system_breaks) - 1)
+        ]
+        pages_systems.append(systems)
+
+    return pages_systems
+
+
 def copy_all_mscx_files(working_dir: str, dest: str) -> None:
     for root, _dirs, files in os.walk(working_dir):
         for file in files:
@@ -294,7 +343,7 @@ def _reset_note_positions(mscx_file: str) -> None:
             f.write(new_content)
 
 
-def _create_musicxml_and_svg_files() -> None:
+def _create_musicxml_files(include_svg: bool = True) -> None:
     dest = os.path.join(lieder, "rendered_scores")
     os.makedirs(dest, exist_ok=True)
     copy_all_mscx_files(os.path.join(lieder, "scores"), dest)
@@ -306,16 +355,17 @@ def _create_musicxml_and_svg_files() -> None:
     _ensure_music_font_style_files()
 
     all_jobs = []
+    formats = ["musicxml", "svg"] if include_svg else ["musicxml"]
 
     for file in mscx_files:
         _make_staff_visible(str(file))
         _reset_note_positions(str(file))
         style_file = _music_font_style_file(_music_font_for_file(str(file)))
-        jobs = create_formats(str(file), ["musicxml", "svg"], style_file)
+        jobs = create_formats(str(file), formats, style_file)
         all_jobs.extend(jobs)
 
     if len(all_jobs) == 0:
-        eprint("All musicxml were already created, going on with the next step")
+        eprint("All requested formats were already created, going on with the next step")
         return
 
     eprint("Starting with", len(all_jobs), "jobs")
@@ -363,7 +413,13 @@ def _create_musicxml_and_svg_files() -> None:
         eprint("MuseScore export completed with no failures.")
 
 
-def create_musicxml_and_svg_files_from_mxl(paths: list[Path], dest: str) -> None:
+def _create_musicxml_and_svg_files() -> None:
+    _create_musicxml_files(include_svg=True)
+
+
+def create_musicxml_and_svg_files_from_mxl(
+    paths: list[Path], dest: str, include_svg: bool = True
+) -> None:
     """
     Used for pdmx conversion
     """
@@ -376,10 +432,11 @@ def create_musicxml_and_svg_files_from_mxl(paths: list[Path], dest: str) -> None
     _ensure_music_font_style_files()
 
     all_jobs = []
+    formats = ["musicxml", "svg"] if include_svg else ["musicxml"]
 
     for file in mxl_paths:
         style_file = _music_font_style_file(_music_font_for_file(str(file)))
-        jobs = create_formats(str(file), ["musicxml", "svg"], style_file, ".mxl")
+        jobs = create_formats(str(file), formats, style_file, ".mxl")
         all_jobs.extend(jobs)
 
     if len(all_jobs) == 0:
@@ -718,7 +775,64 @@ def convert_token_and_image_musetrainer(path: Path) -> list[str]:
     return convert_xml_and_svg_file(path, False, flat_musetrainer)
 
 
-def convert_lieder(only_recreate_token_files: bool = False) -> None:
+def convert_musicxml_file_to_tokens(
+    file: Path,
+    flat_folder: str,
+    always_include_time: bool = False,
+) -> list[str]:
+    """Convert a MusicXML file directly into token files per staff using new_system markers,
+    without requiring rendered images or SVGs.
+    """
+    try:
+        voices = music_xml_file_to_tokens(str(file))
+        if not voices:
+            return []
+
+        splitter = [MeasureCutter(v) for v in voices]
+        pages_systems = split_into_page_and_system_measures(voices)
+
+        result: list[str] = []
+        stem = file.stem
+        for page_idx, systems in enumerate(pages_systems, start=1):
+            staff_number = 0
+            for num_measures in systems:
+                for voice_idx in range(len(voices)):
+                    staff_number += 1
+                    cutter = splitter[voice_idx]
+                    selected_measures = cutter.extract_measures(
+                        num_measures, always_include_time=always_include_time
+                    )
+                    if contains_only_supported_clefs(selected_measures):
+                        selected_measures = strip_naturals(selected_measures)
+                        tokens_content = token_lines_to_str(selected_measures)
+                        token_file_name = os.path.join(
+                            flat_folder, f"{stem}-{page_idx}-{staff_number}.tokens"
+                        )
+                        write_text_to_file(tokens_content, token_file_name)
+                        tok_path = str(Path(token_file_name).relative_to(git_root))
+                        result.append(f"{tok_path}\n")
+        return result
+    except Exception as e:
+        eprint("Error while processing", file, e)
+        return []
+
+
+def convert_musicxml_only_token_lieder(path: Path) -> list[str]:
+    return convert_musicxml_file_to_tokens(path, flat_data)
+
+
+def convert_musicxml_only_token_pdmx(path: Path) -> list[str]:
+    return convert_musicxml_file_to_tokens(path, flat_pretraining_pdmx)
+
+
+def convert_musicxml_only_token_musetrainer(path: Path) -> list[str]:
+    return convert_musicxml_file_to_tokens(path, flat_musetrainer, always_include_time=True)
+
+
+def convert_lieder(
+    only_recreate_token_files: bool = False,
+    tokens_from_xml_only: bool = False,
+) -> None:
     if platform.system() == "Windows":
         eprint("Transformer training is only implemented for Linux")
         eprint("Feel free to submit a PR to support Windows")
@@ -766,18 +880,23 @@ def convert_lieder(only_recreate_token_files: bool = False) -> None:
 
     os.makedirs(flat_data, exist_ok=True)
     eprint("Indexing Lieder dataset, this can up to several hours.")
-    _create_musicxml_and_svg_files()
+    if tokens_from_xml_only:
+        _create_musicxml_files(include_svg=False)
+        worker = convert_musicxml_only_token_lieder
+    elif only_recreate_token_files:
+        _create_musicxml_and_svg_files()
+        worker = _convert_file_only_token
+    else:
+        _create_musicxml_and_svg_files()
+        worker = _convert_token_and_image
+
     music_xml_files = list(Path(os.path.join(lieder, "rendered_scores")).rglob("*.musicxml"))
     with open(lieder_train_index, "w") as f:
         file_number = 0
         skipped_files = 0
         with multiprocessing.Pool(processes=8, maxtasksperchild=2) as p:
             for result in p.imap_unordered(
-                (
-                    _convert_file_only_token
-                    if only_recreate_token_files
-                    else _convert_token_and_image
-                ),
+                worker,
                 music_xml_files,
             ):
                 if len(result) > 0:
@@ -796,14 +915,24 @@ def convert_lieder(only_recreate_token_files: bool = False) -> None:
 
 
 from training.omr_datasets.convert_musetrainer import flat_musetrainer
-from training.omr_datasets.convert_pdmx import flat_pdmx
+from training.omr_datasets.convert_pdmx import flat_pdmx, flat_pretraining_pdmx
 
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn")
     only_recreate_token_files = False
-    if "--only-tokens" in sys.argv:
+    tokens_from_xml_only = False
+    if "--only-tokens-from-xml" in sys.argv or "--tokens-from-xml" in sys.argv:
+        tokens_from_xml_only = True
+    elif "--only-tokens" in sys.argv:
         only_recreate_token_files = True
     elif len(sys.argv) > 1:
-        eprint(str.join("", _convert_token_and_image(Path(sys.argv[1]))))
+        target_path = Path(sys.argv[1])
+        if target_path.suffix == ".musicxml" and "--xml" in sys.argv:
+            eprint(str.join("", convert_musicxml_file_to_tokens(target_path, flat_data)))
+        else:
+            eprint(str.join("", _convert_token_and_image(target_path)))
         sys.exit(0)
-    convert_lieder(only_recreate_token_files)
+    convert_lieder(
+        only_recreate_token_files=only_recreate_token_files,
+        tokens_from_xml_only=tokens_from_xml_only,
+    )
