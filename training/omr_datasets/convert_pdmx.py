@@ -8,12 +8,6 @@ from pathlib import Path
 
 from homr.download_utils import download_file, untar_file
 from homr.simple_logging import eprint
-from training.omr_datasets.convert_lieder import (
-    convert_file_only_token_pdmx,
-    convert_token_and_image_pdmx,
-    convert_musicxml_only_token_pdmx,
-    create_musicxml_and_svg_files_from_mxl,
-)
 
 script_location = os.path.dirname(os.path.realpath(__file__))
 git_root = Path(script_location).parent.parent.absolute()
@@ -28,6 +22,13 @@ flat_pretraining_pdmx = os.path.join(pdmx_root, "flat_pretraining")
 
 rendered_scores = os.path.join(pdmx_root, "rendered_scores")
 rendered_scores_pretraining = os.path.join(pdmx_root, "rendered_scores_pretraining")
+
+from training.omr_datasets.convert_lieder import (
+    convert_file_only_token_pdmx,
+    convert_token_and_image_pdmx,
+    convert_musicxml_only_token_pdmx,
+    create_musicxml_and_svg_files_from_mxl,
+)
 
 # Complexity 3 often has octave shifts (unsupported) and long sequences (see max_seq_len),
 # so we skip attempting those files rather than waste time converting ones we'd filter out later.
