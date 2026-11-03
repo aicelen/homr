@@ -120,10 +120,10 @@ def convert_pdmx(only_recreate_token_files: bool = False, from_xml: bool = False
         create_musicxml_and_svg_files_from_mxl(mxl_paths, rendered_scores)
         music_xml_files = list(Path(rendered_scores).rglob("*.musicxml"))
 
-    with open(pdmx_pretrain_index if from_xml else pdmx_train_index, "w") as f:
+    with open(pdmx_pretrain_index if from_xml else pdmx_train_index, "w", buffering=1 << 20) as f:
         file_number = 0
         skipped_files = 0
-        with multiprocessing.Pool(processes=8, maxtasksperchild=2) as p:
+        with multiprocessing.Pool(processes=8, maxtasksperchild=100) as p:
             for result in p.imap_unordered(
                 (
                 convert_file_only_token_pdmx if only_recreate_token_files
