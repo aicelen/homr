@@ -79,11 +79,7 @@ def train_transformer(
 ) -> None:
     distribute = Distribute()
 
-    number_of_epochs = 35
-    if smoke_test:
-        number_of_epochs = 10
-    elif fine_tune:
-        number_of_epochs = 15
+    number_of_epochs = 15
     resume_from_checkpoint = None
 
     checkpoint_folder = "current_pretraining"
@@ -145,7 +141,7 @@ def train_transformer(
         label_names=label_names,
         bf16=not fp32,
         dataloader_pin_memory=True,
-        dataloader_num_workers=12,
+        dataloader_num_workers=4,
     )
 
     model = get_decoder_prertaining(config=config)

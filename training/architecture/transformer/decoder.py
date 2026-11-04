@@ -254,7 +254,7 @@ class ScoreTransformerWrapper(nn.Module):
 
 
 class ScoreDecoder(nn.Module):
-    def __init__(self, transformer: ScoreTransformerWrapper, config: Config):
+    def __init__(self, transformer: ScoreTransformerWrapper, config: Config , pretraining: bool = False):
         super().__init__()
         self.pad_value = (config.pad_token,)
         # NOTE: nonote_token and pad_token currently share the same id (0).
@@ -264,6 +264,7 @@ class ScoreDecoder(nn.Module):
         self.net = transformer
         self.max_seq_len = config.max_seq_len
         self.eos_token = config.eos_token
+        self.pretraining = pretraining
 
         self.inv_rhythm_vocab = {v: k for k, v in config.rhythm_vocab.items()}
         self.inv_pitch_vocab = {v: k for k, v in config.pitch_vocab.items()}
@@ -410,7 +411,7 @@ class ScoreDecoder(nn.Module):
         mask = mask.bool()
 
         # Scheduled Sampling: Two-pass approach
-        if self.training and sampling_prob < 1.0:
+        if self.training and sampling_prob < 1.0 and not self.pretraining:
             with torch.no_grad():
                 self.net.eval()
                 # First pass to get predictions
@@ -608,6 +609,7 @@ def get_decoder_prertaining(config: Config) -> ScoreDecoder:
     return ScoreDecoder(
         get_score_wrapper_pre_training(config),
         config=config,
+        pretraining=True,
     )
 
 

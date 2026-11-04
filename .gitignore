@@ -34,6 +34,7 @@ _build/
 /seg_unet.keras
 /logs
 /current_training
+/current_pretraining
 
 # Testdata
 /*.jpeg
