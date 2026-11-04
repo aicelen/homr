@@ -117,7 +117,7 @@ class ScoreTransformerWrapper(nn.Module):
             if self.pretraining:
                 x = self.attn_layers(x, mask=mask, return_hiddens=False, **kwargs)
                 attention = None
-            
+
             elif return_center_of_attention:
                 x, hiddens = self.attn_layers(x, mask=mask, return_hiddens=True, **kwargs)
                 attention = self.get_center_of_attention(hiddens.attn_intermediates)
@@ -163,9 +163,7 @@ class ScoreTransformerWrapper(nn.Module):
             cache_input = LayerIntermediates(attn_intermediates=inters, cache_length=cache_len)
 
             if self.pretraining:
-                x, cache = self.attn_layers(
-                    x, cache=cache_input, mask=mask, return_hiddens=True
-                )
+                x, cache = self.attn_layers(x, cache=cache_input, mask=mask, return_hiddens=True)
 
             else:
                 x, cache = self.attn_layers(
@@ -254,7 +252,9 @@ class ScoreTransformerWrapper(nn.Module):
 
 
 class ScoreDecoder(nn.Module):
-    def __init__(self, transformer: ScoreTransformerWrapper, config: Config , pretraining: bool = False):
+    def __init__(
+        self, transformer: ScoreTransformerWrapper, config: Config, pretraining: bool = False
+    ):
         super().__init__()
         self.pad_value = (config.pad_token,)
         # NOTE: nonote_token and pad_token currently share the same id (0).
@@ -605,6 +605,7 @@ def get_decoder(config: Config) -> ScoreDecoder:
         config=config,
     )
 
+
 def get_decoder_prertaining(config: Config) -> ScoreDecoder:
     return ScoreDecoder(
         get_score_wrapper_pre_training(config),
@@ -625,7 +626,10 @@ def get_score_wrapper(config: Config, attn_flash: bool = True) -> ScoreTransform
         ),
     )
 
-def get_score_wrapper_pre_training(config: Config, attn_flash: bool = True) -> ScoreTransformerWrapper:
+
+def get_score_wrapper_pre_training(
+    config: Config, attn_flash: bool = True
+) -> ScoreTransformerWrapper:
     return ScoreTransformerWrapper(
         config=config,
         pretraining=True,
@@ -637,6 +641,7 @@ def get_score_wrapper_pre_training(config: Config, attn_flash: bool = True) -> S
             **config.decoder_pre_training_args.to_dict(),
         ),
     )
+
 
 def detokenize(tokens: torch.Tensor, vocab: Any) -> list[str]:
     toks = [vocab[tok.item()] for tok in tokens]

@@ -148,16 +148,12 @@ def split_into_page_and_system_measures(voices: list[list[Measure]]) -> list[lis
         system_breaks = [page_start]
         for m_idx in range(page_start + 1, page_end):
             if any(
-                hasattr(voice[m_idx], "new_system") and voice[m_idx].new_system
-                for voice in voices
+                hasattr(voice[m_idx], "new_system") and voice[m_idx].new_system for voice in voices
             ):
                 system_breaks.append(m_idx)
         system_breaks.append(page_end)
 
-        systems = [
-            system_breaks[k + 1] - system_breaks[k]
-            for k in range(len(system_breaks) - 1)
-        ]
+        systems = [system_breaks[k + 1] - system_breaks[k] for k in range(len(system_breaks) - 1)]
         pages_systems.append(systems)
 
     return pages_systems
@@ -780,7 +776,8 @@ def convert_musicxml_file_to_tokens(
     flat_folder: str,
     always_include_time: bool = False,
 ) -> list[str]:
-    """Convert a MusicXML file directly into token files per staff using new_system markers,
+    """
+    Convert a MusicXML file directly into token files per staff using new_system markers,
     without requiring rendered images or SVGs.
     """
     try:

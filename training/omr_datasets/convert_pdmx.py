@@ -25,8 +25,8 @@ rendered_scores_pretraining = os.path.join(pdmx_root, "rendered_scores_pretraini
 
 from training.omr_datasets.convert_lieder import (
     convert_file_only_token_pdmx,
-    convert_token_and_image_pdmx,
     convert_musicxml_only_token_pdmx,
+    convert_token_and_image_pdmx,
     create_musicxml_and_svg_files_from_mxl,
 )
 
@@ -35,7 +35,8 @@ from training.omr_datasets.convert_lieder import (
 _MAX_COMPLEXITY = 2
 _MAX_TRACKS = 2
 _TARGET_FILES = 10000  # ~50K images
-_TARGET_FILES_PRETRAINING = 100000 # ~500k staffs
+_TARGET_FILES_PRETRAINING = 100000  # ~500k staffs
+
 
 def _load_filtered_paths(pretraining: bool = False) -> list[Path]:
     if pretraining:
@@ -115,7 +116,9 @@ def convert_pdmx(only_recreate_token_files: bool = False, from_xml: bool = False
     eprint(f"{len(mxl_paths)} files pass pre-filters (c<={_MAX_COMPLEXITY}, tracks<={_MAX_TRACKS})")
 
     if from_mxl:
-        create_musicxml_and_svg_files_from_mxl(mxl_paths, rendered_scores_pretraining, include_svg=False)
+        create_musicxml_and_svg_files_from_mxl(
+            mxl_paths, rendered_scores_pretraining, include_svg=False
+        )
         music_xml_files = list(Path(rendered_scores_pretraining).rglob("*.musicxml"))
     else:
         create_musicxml_and_svg_files_from_mxl(mxl_paths, rendered_scores)
@@ -127,9 +130,11 @@ def convert_pdmx(only_recreate_token_files: bool = False, from_xml: bool = False
         with multiprocessing.Pool(processes=8, maxtasksperchild=1000) as p:
             for result in p.imap_unordered(
                 (
-                convert_file_only_token_pdmx if only_recreate_token_files
+                    convert_file_only_token_pdmx
+                    if only_recreate_token_files
                     else (
-                        convert_musicxml_only_token_pdmx if from_xml
+                        convert_musicxml_only_token_pdmx
+                        if from_xml
                         else convert_token_and_image_pdmx
                     )
                 ),

@@ -182,7 +182,6 @@ class TokensMeasure:
     def make_new_system(self) -> None:
         self.mark_new_system()
 
-
     def append_symbol_to_staff(self, staff: int, symbol: EncodedSymbol) -> None:
         if has_rhythm_symbol_a_position(symbol.rhythm):
             symbol.position = self._get_staff_position(staff)
@@ -468,7 +467,6 @@ class TokensPart:
 
     def make_new_system(self) -> None:
         self.mark_new_system()
-
 
     def append_rest(
         self,

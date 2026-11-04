@@ -81,11 +81,12 @@ class DecoderArgs:
     def to_json_string(self) -> str:
         return json.dumps(self.to_dict(), indent=2)
 
+
 class DecoderPreArgs(DecoderArgs):
     def __init__(self) -> None:
         super().__init__()
         self.cross_attend = False
- 
+
 
 class Config:
     def __init__(self) -> None:

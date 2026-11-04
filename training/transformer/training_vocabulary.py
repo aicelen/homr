@@ -264,6 +264,7 @@ def read_tokens(filepath: str) -> list[EncodedSymbol]:
         print(e)
         print(filepath)
 
+
 class DecoderBranches:
     def __init__(
         self,

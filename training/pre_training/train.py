@@ -13,18 +13,15 @@ from transformers import (
 from homr.simple_logging import eprint
 from homr.transformer.configs import Config
 from training.architecture.transformer.decoder import get_decoder_prertaining
-
 from training.omr_datasets.convert_pdmx import convert_pdmx, pdmx_pretrain_index
-
 from training.omr_datasets.filter_from_index import remove_tokens
-from training.run_id import get_run_id
 from training.pre_training.data_loader import label_names, load_dataset
 from training.pre_training.distribute import Distribute
 from training.pre_training.metrics import HomrTrainer
 from training.pre_training.mix_datasets import mix_training_sets
+from training.run_id import get_run_id
 
 torch._dynamo.config.suppress_errors = True
-
 
 
 def load_training_index(file_path: str) -> list[str]:
@@ -89,12 +86,10 @@ def train_transformer(
         if distribute.is_rank0():
             shutil.rmtree(os.path.join(git_root, checkpoint_folder))
 
-    dataset_index = [
-        pdmx_pretrain_index
-    ]
+    dataset_index = [pdmx_pretrain_index]
     dataset_weights = [1.0]
     if distribute.is_rank0():
-        #_check_datasets_are_present(dataset_index)
+        # _check_datasets_are_present(dataset_index)
         pass
     distribute.barrier()
 
@@ -183,4 +178,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         raise ValueError("Unknown argument")
     else:
-        train_transformer(smoke_test=True)
+        train_transformer()
