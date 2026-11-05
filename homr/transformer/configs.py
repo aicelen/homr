@@ -37,6 +37,14 @@ class FilePaths:
             f"{model_name}.pth",
         )
 
+        self.pretrained_decoder = os.path.join(
+            root_dir,
+            "training",
+            "architecture",
+            "transformer",
+            "pretraining_decoder_522-8a54ef500a9b9a650377e1f99ebdf763be377563.pth",
+        )
+
         self.rhythmtokenizer = os.path.join(workspace, "tokenizer_rhythm.json")
         self.lifttokenizer = os.path.join(workspace, "tokenizer_lift.json")
         self.pitchtokenizer = os.path.join(workspace, "tokenizer_pitch.json")

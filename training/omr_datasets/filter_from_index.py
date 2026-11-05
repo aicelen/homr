@@ -13,10 +13,11 @@ def find_tokens() -> tuple[VocabularyStats, set[str]]:
     stats = VocabularyStats()
     errors: set[str] = set()
     exclude = "validation"
+    exclude_pre = "flat_pretraining"
     files = [
         f
         for f in glob.glob(os.path.join("datasets", "**", "*.tokens"), recursive=True)
-        if exclude not in f.split(os.sep)
+        if exclude not in f.split(os.sep) and exclude_pre not in f.split(os.sep)
     ]
     for i, file in enumerate(files):
         try:
@@ -36,20 +37,15 @@ def remove_entry_from_train_index(file_path: str, files: set[str]) -> None:
     if not files:
         return
 
-    for file in files:
-        try:
-            os.remove(file)
-            eprint(f"removing {file}")
-        except FileNotFoundError:
-            pass
-
     normalized = {os.path.normpath(f) for f in files}
     temp_filename = file_path + ".tmp"
 
     with open(file_path, "r") as src, open(temp_filename, "w") as dst:
         for line in src:
-            if os.path.normpath(line.rstrip("\n")) not in normalized:
-                dst.write(line)
+            parts = line.strip().split(",")
+            if any(os.path.normpath(p) in normalized for p in parts):
+                continue  # drop entries that reference a bad tokens file
+            dst.write(line)
 
     os.replace(temp_filename, file_path)
     print("Finished overwriting index")
@@ -59,7 +55,12 @@ def remove_tokens(indexes: list[str]) -> None:
     stats, errors = find_tokens()
     for index in indexes:
         remove_entry_from_train_index(index, errors)
-
+    for file in errors:
+        try:
+            os.remove(file)
+            eprint(f"removing {file}")
+        except FileNotFoundError:
+            pass
 
 if __name__ == "__main__":
     from training.omr_datasets.convert_grandstaff import grandstaff_train_index

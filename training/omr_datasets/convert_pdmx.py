@@ -115,7 +115,7 @@ def convert_pdmx(only_recreate_token_files: bool = False, from_xml: bool = False
     mxl_paths = _load_filtered_paths(from_xml)
     eprint(f"{len(mxl_paths)} files pass pre-filters (c<={_MAX_COMPLEXITY}, tracks<={_MAX_TRACKS})")
 
-    if from_mxl:
+    if from_xml:
         create_musicxml_and_svg_files_from_mxl(
             mxl_paths, rendered_scores_pretraining, include_svg=False
         )

@@ -7,14 +7,14 @@ from homr.transformer.configs import Config
 from homr.transformer.vocabulary import EncodedSymbol
 from training.architecture.transformer.decoder import get_decoder
 from training.architecture.transformer.encoder import get_encoder
-
-
+from homr.simple_logging import eprint
 class TrOMR(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
         self.encoder = get_encoder(config)
         self.decoder = get_decoder(config)
         self.config = config
+        self.pretrained_decoder_params: set[str] = set()
 
     def eval_mode(self) -> None:
         self.decoder.eval()
@@ -57,6 +57,21 @@ class TrOMR(nn.Module):
         out = self.decoder.generate(start_token, nonote_token, context=context)
 
         return out
+
+
+    def _set_pretrained_decoder_grad(self, requires_grad: bool) -> None:
+        params = dict(self.named_parameters())
+        for name in self.pretrained_decoder_params:
+            params[name].requires_grad = requires_grad
+
+    def freeze_pretrained_decoder(self) -> None:
+        """Freeze all pertrained decoder parameters."""
+        self._set_pretrained_decoder_grad(False)
+
+
+    def unfreeze_pretrained_decoder(self) -> None:
+        """Unfreeze all pertrained decoder parameters."""
+        self._set_pretrained_decoder_grad(True)
 
     def freeze_decoder(self) -> None:
         """Freeze all decoder parameters to prevent updates during training."""
@@ -104,3 +119,50 @@ def load_model(config: Config) -> TrOMR:
         )
     model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     return model
+
+
+def remap_pretrained_decoder(state_dict_weights: dict, model: nn.Module) -> dict:
+    PREFIX = "net.attn_layers.layers."
+
+    # (Attention -> cross-attention -> feed forward) x 8
+    # weights do not contain cross attention
+    layer_types = model.decoder.net.attn_layers.layer_types
+    attn_idx = [i for i, t in enumerate(layer_types) if t == "a"]
+    ff_idx = [i for i, t in enumerate(layer_types) if t == "f"]
+
+    new_sd = {}
+    for k, v in state_dict_weights.items():
+        if k.startswith(PREFIX):
+            idx, rest = k[len(PREFIX):].split(".", 1)
+            i = int(idx)
+            # even: attention, odd: feedforward
+            layer_index = attn_idx[i // 2] if i % 2 == 0 else ff_idx[i // 2]
+            k = f"{PREFIX}{layer_index}.{rest}"
+
+        k = "decoder." + k
+
+        new_sd[k] = v
+    return new_sd
+
+def load_model_from_pretrained_decoder(config: Config) -> TrOMR:
+    model = TrOMR(config)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    weights = torch.load(config.filepaths.pretrained_decoder, map_location=device, weights_only=True)
+
+    state_dict = remap_pretrained_decoder(weights, model)
+    result = model.load_state_dict(state_dict, strict=False)
+
+    eprint("Unexpected:", result.unexpected_keys)
+    missing = set(result.missing_keys)
+    model.pretrained_decoder_params = {
+        name
+        for name, _ in model.named_parameters()
+        if name.startswith("decoder.") and name not in missing
+    }
+
+    model.to(device)
+    return model
+
+if __name__ == "__main__":
+    config = Config()
+    load_model_from_pretrained_decoder(config)

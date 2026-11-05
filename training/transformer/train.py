@@ -15,7 +15,7 @@ from transformers import (
 
 from homr.simple_logging import eprint
 from homr.transformer.configs import Config
-from training.architecture.transformer.tromr_arch import TrOMR, load_model
+from training.architecture.transformer.tromr_arch import load_model_from_pretrained_decoder, load_model
 from training.omr_datasets.convert_grandstaff import (
     convert_grandstaff,
     grandstaff_train_index,
@@ -48,25 +48,25 @@ class FreezeCallback(TrainerCallback):
 
     def __init__(self, epochs_to_freeze: int = 2):
         self.epochs_to_freeze = epochs_to_freeze
-        self._backbone_frozen = False
+        self._pretrained_decoder_frozen = False
 
     def on_train_begin(
         self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any
     ) -> None:
         model = kwargs.get("model")
-        if model and hasattr(model, "freeze_backbone"):
+        if model and hasattr(model, "freeze_pretrained_decoder"):
             eprint(f"Freezing backbone for the first {self.epochs_to_freeze} epochs")
-            model.freeze_backbone()
-            self._backbone_frozen = True
+            model.freeze_pretrained_decoder()
+            self._pretrained_decoder_frozen = True
 
     def on_epoch_begin(
         self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs: Any
     ) -> None:
         model = kwargs.get("model")
-        if model and self._backbone_frozen and state.epoch and state.epoch >= self.epochs_to_freeze:
+        if model and self._pretrained_decoder_frozen and state.epoch and state.epoch >= self.epochs_to_freeze:
             eprint(f"Unfreezing backbone at epoch {state.epoch}")
-            model.unfreeze_backbone()
-            self._backbone_frozen = False
+            model.unfreeze_pretrained_decoder()
+            self._pretrained_decoder_frozen = False
 
 
 def load_training_index(file_path: str) -> list[str]:
@@ -187,7 +187,7 @@ def train_transformer(
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
         optim="adamw_torch_fused",
-        gradient_accumulation_steps=max(1, 4 // distribute.get_world_size()),
+        gradient_accumulation_steps=8,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size // 2,
         num_train_epochs=number_of_epochs,
@@ -212,8 +212,8 @@ def train_transformer(
         model.freeze_decoder()
         model.unfreeze_lift_decoder()
     else:
-        model = TrOMR(config)
-
+        model = load_model_from_pretrained_decoder(config)
+        print(sum(p.numel() for p in model.parameters() if p.requires_grad))
     model_name = "pytorch_model"
 
     model_destination = os.path.join(
@@ -228,7 +228,7 @@ def train_transformer(
     try:
         callbacks: list[TrainerCallback] = [EarlyStoppingCallback(early_stopping_patience=5)]
         if not fine_tune:
-            callbacks.append(FreezeCallback(epochs_to_freeze=2))
+            callbacks.append(FreezeCallback(epochs_to_freeze=3))
 
         trainer = HomrTrainer(
             model,
