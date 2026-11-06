@@ -106,7 +106,7 @@ def _convert_file(path: Path, ony_recreate_token_files: bool = False) -> str:  #
         dest_tokens = Path(flat_grandstaff) / str(tokens).split("grandstaff/", 1)[1]
         dest_image.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(image, dest_image)
-        shutil.copy2(tokens, dest_tokens)
+        Path(tokens).replace(dest_tokens)
 
         return (
             str(dest_image.relative_to(git_root)) + "," + str(dest_tokens.relative_to(git_root))
