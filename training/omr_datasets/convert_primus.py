@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import random
 from pathlib import Path
+import shutil
 
 import cv2
 
@@ -22,6 +23,7 @@ git_root = Path(script_location).parent.parent.absolute()
 dataset_root = os.path.join(git_root, "datasets")
 primus = os.path.join(dataset_root, "Corpus")
 primus_train_index = os.path.join(primus, "index.txt")
+flat_primus = os.path.join(primus, "flat")
 
 
 def _replace_suffix(path: Path, suffix: str) -> Path:
@@ -46,7 +48,11 @@ def _convert_file(path: Path, only_recreate_token_files: bool) -> list[str]:
         return []
     if "," in str(path):
         return []
-    preprocessed_path = _replace_suffix(path, "-pre.jpg")
+
+    path_flat = Path(flat_primus) / str(path).split("Corpus/", 1)[1]
+    path_flat.parent.mkdir(parents=True, exist_ok=True)
+    preprocessed_path = _replace_suffix(path_flat, "-pre.jpg")
+
     if not only_recreate_token_files:
         image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
         if image is None:
@@ -66,7 +72,7 @@ def _convert_file(path: Path, only_recreate_token_files: bool) -> list[str]:
     tokens = convert_primus_semantic_to_tokens(semantic_file.read_text())
     tokens = maintain_accidentals_during_measure(tokens)
     tokens = strip_naturals(tokens)
-    token_file = _replace_suffix(path, ".tokens")
+    token_file = _replace_suffix(path_flat, ".tokens")
     token_file.write_text(token_lines_to_str(tokens))
     return [
         str(preprocessed_path.relative_to(git_root))
