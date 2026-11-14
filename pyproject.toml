@@ -26,6 +26,10 @@ cpu = [
 cuda = [
   "onnxruntime-gpu[cuda,cudnn] >= 1.24.1, < 2",
 ]
+tpu = [
+  "onnxruntime >= 1.24.1, < 2",
+  "torch_tpu >= 0.2.0, < 1",
+]
 
 [dependency-groups]
 # PyPI rejects direct URL dependencies in extras, so ROCm is a group: `poetry install --with rocm`

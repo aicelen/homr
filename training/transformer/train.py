@@ -132,6 +132,9 @@ def train_transformer(
     fp32: bool = False, resume: str = "", smoke_test: bool = False, fine_tune: bool = False
 ) -> None:
     distribute = Distribute()
+    tpu = distribute.tpu
+    if tpu:
+        eprint(f"Training on TPU with {distribute.get_world_size()} device(s)")
 
     number_of_epochs = 35
     if smoke_test:
@@ -150,11 +153,9 @@ def train_transformer(
     # PrIMuS isn't used: it has no beams and its Hugging Face copy is CC BY-NC (non-commercial)
     # MuseTrainer isn't used: 1k samples, it adds little next to PDMX and has no license file
     dataset_index = [
-        lieder_train_index,
         grandstaff_train_index,
-        pdmx_train_index,
     ]
-    dataset_weights = [1.0, 1.0, 1.0]
+    dataset_weights = [1.0]
     invalid_tokens_file = os.path.join(git_root, checkpoint_folder, "invalid_tokens.txt")
     if distribute.is_rank0():
         _check_datasets_are_present(dataset_index, invalid_tokens_file)
@@ -185,16 +186,17 @@ def train_transformer(
 
     run_id = get_run_id()
 
-    batch_size = 16  # 16gb vram
-    eval_batch_size = 32
+    batch_size = 8  # 16gb vram
+    eval_batch_size = 16
 
     train_args = TrainingArguments(
         checkpoint_folder,
         torch_compile=compile_model,
+        torch_compile_backend="tpu" if tpu else None,
         eval_strategy="epoch",
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
-        optim="adamw_torch_fused",
+        optim="adamw_torch" if tpu else "adamw_torch_fused",  # TPU has no CUDA fused AdamW
         gradient_accumulation_steps=max(1, 2 // distribute.get_world_size()),
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=eval_batch_size,
@@ -208,10 +210,13 @@ def train_transformer(
         report_to=["tensorboard"],
         logging_dir=os.path.join("logs", f"run{run_id}"),
         label_names=label_names,
-        bf16=not fp32,
-        logging_nan_inf_filter=False,  # the filter syncs with the GPU every step
-        dataloader_pin_memory=True,
-        dataloader_num_workers=12,
+        # On TPU, HomrTrainer applies bf16 autocast itself, see tpu_bf16
+        bf16=not fp32 and not tpu,
+        logging_nan_inf_filter=False,  # the filter syncs with the accelerator every step
+        dataloader_pin_memory=not tpu,
+        # TPU compiles a new graph for every batch shape, a smaller last batch would add more
+        dataloader_drop_last=tpu,
+        dataloader_num_workers=0,
     )
 
     if fine_tune:
@@ -247,13 +252,16 @@ def train_transformer(
             eval_dataset=datasets["validation"],
             callbacks=callbacks,
             distribute=distribute,
+            tpu_bf16=tpu and not fp32,
         )
 
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     except KeyboardInterrupt:
         eprint("Interrupted")
     if distribute.is_rank0():
-        torch.save(model.state_dict(), model_destination)
+        # Moved to the CPU, so that the weights also load without torch_tpu
+        state_dict = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+        torch.save(state_dict, model_destination)
         eprint(f"Saved model to {model_destination}")
     distribute.barrier()
     distribute.destroy()

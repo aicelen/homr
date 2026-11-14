@@ -1,9 +1,9 @@
 import os
 from collections import defaultdict
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 import torch
-import torch.distributed as dist
 from torch import Tensor
 from transformers import Trainer
 
@@ -28,22 +28,35 @@ class HomrTrainer(Trainer):
     and overall token-weighted (micro) accuracy.
     """
 
-    def __init__(self, *args: Any, distribute: Distribute, **kwargs: Any) -> None:
+    def __init__(
+        self, *args: Any, distribute: Distribute, tpu_bf16: bool = False, **kwargs: Any
+    ) -> None:
+        """
+        tpu_bf16: Runs the forward pass under bf16 autocast on TPUs. Used instead of
+        TrainingArguments.bf16, because transformers 4.x rejects bf16=True when neither
+        CUDA nor torch_xla is present.
+        """
         super().__init__(*args, **kwargs)
 
         self._distribute = distribute
+        self._tpu_bf16 = tpu_bf16
 
         # Training loss accumulators, kept on the device to avoid a sync per step
         self._loss_sum: dict[str, Tensor | float] = defaultdict(float)
         self._loss_count: dict[str, int] = defaultdict(int)
 
-        # Evaluation accumulators
-        self._eval_loss_sum: dict[str, float] = defaultdict(float)
+        # Evaluation accumulators, kept on the device to avoid a sync per step
+        self._eval_loss_sum: dict[str, Tensor | float] = defaultdict(float)
         self._eval_loss_count: dict[str, int] = defaultdict(int)
-        self._acc_correct: dict[str, int] = defaultdict(int)
-        self._acc_total: dict[str, int] = defaultdict(int)
+        self._acc_correct: dict[str, Tensor | float] = defaultdict(float)
+        self._acc_total: dict[str, Tensor | float] = defaultdict(float)
 
         self._rhythm_map = map_rhythm_symbol_with_position()
+
+    def _autocast(self) -> AbstractContextManager[Any]:
+        if self._tpu_bf16:
+            return torch.autocast(device_type="tpu", dtype=torch.bfloat16)
+        return nullcontext()
 
     def compute_loss(
         self,
@@ -67,7 +80,8 @@ class HomrTrainer(Trainer):
                         sampling_prob, device=inputs["rhythms"].device
                     )
 
-        outputs = model(**inputs)
+        with self._autocast():
+            outputs = model(**inputs)
         loss = outputs["loss"]
 
         if model.training:
@@ -89,22 +103,23 @@ class HomrTrainer(Trainer):
 
         inputs = self._prepare_inputs(inputs)
 
-        with torch.no_grad():
+        with torch.no_grad(), self._autocast():
             outputs = model(**inputs)
 
         # Accumulate per-branch eval losses
         for k in LOSS_COMPONENTS:
-            self._eval_loss_sum[k] += outputs[k].detach().item()
+            self._eval_loss_sum[k] += outputs[k].detach().float()
             self._eval_loss_count[k] += 1
 
         # Accumulate per-branch accuracy stats
         self._accumulate_accuracy(outputs, inputs)
 
-        if not self._distribute.enabled:
+        if not self._distribute.enabled and not self._distribute.tpu:
             loss = outputs["loss"].mean().detach().cpu()
         else:
             # when using distributed training, loss on each device should be gathered,
-            # which can only run on gpu
+            # which can only run on the device. On TPU, moving it to the CPU would sync
+            # every step.
             loss = outputs["loss"].mean().detach()
         return loss, None, None
 
@@ -140,40 +155,28 @@ class HomrTrainer(Trainer):
             labels = labels[:, :min_len]
             current_eval_mask = eval_mask[:, :min_len]
 
-            # Combine explicit ignore_index with the binary mask
+            # Combine explicit ignore_index with the binary mask.
+            # Branches without tokens add zero, evaluation_loop skips them.
             mask = (labels != -100) & current_eval_mask
-            if not mask.any():
-                continue
 
-            correct = ((preds == labels) & mask).sum().item()
-            total = mask.sum().item()
-
-            self._acc_correct[name] += int(correct)
-            self._acc_total[name] += int(total)
+            self._acc_correct[name] += ((preds == labels) & mask).sum()
+            self._acc_total[name] += mask.sum()
 
             if name == "pitch" and os.environ.get("DEBUG_PITCH_RHYTHM_ACCURACY", "0") == "1":
                 current_is_pos = is_positional[:, :min_len]
                 is_correct = preds == labels
                 is_pos = mask & current_is_pos
                 is_nonpos = mask & (~current_is_pos)
-                self._acc_correct["pitch_posRhy"] += int((is_correct & is_pos).sum().item())
-                self._acc_total["pitch_posRhy"] += int(is_pos.sum().item())
-                self._acc_correct["pitch_nonposRhy"] += int((is_correct & is_nonpos).sum().item())
-                self._acc_total["pitch_nonposRhy"] += int(is_nonpos.sum().item())
+                self._acc_correct["pitch_posRhy"] += (is_correct & is_pos).sum()
+                self._acc_total["pitch_posRhy"] += is_pos.sum()
+                self._acc_correct["pitch_nonposRhy"] += (is_correct & is_nonpos).sum()
+                self._acc_total["pitch_nonposRhy"] += is_nonpos.sum()
 
-    def _all_reduce(self, d: dict[str, float]) -> None:
-        if not self._distribute.enabled or not d:
-            return
-
-        keys = sorted(d.keys())
-        tensor = torch.tensor(
-            [float(d[k]) for k in keys],
-            dtype=torch.float64,
-            device=torch.cuda.current_device(),
-        )
-        dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
-        for i, k in enumerate(keys):
-            d[k] = tensor[i].item()
+    def _to_floats(self, d: dict[str, Tensor | float]) -> dict[str, float]:
+        """Moves the accumulated values to the CPU, one sync per evaluation."""
+        result = {k: float(v) for k, v in d.items()}
+        self._distribute.all_reduce_sum(result)
+        return result
 
     def evaluation_loop(self, *args, metric_key_prefix="eval", **kwargs):  # type: ignore
         # Reset eval accumulators
@@ -188,31 +191,24 @@ class HomrTrainer(Trainer):
             **kwargs,
         )
 
-        for accumulator in [
-            self._eval_loss_sum,
-            self._eval_loss_count,
-            self._acc_correct,
-            self._acc_total,
-        ]:
-            self._all_reduce(accumulator)
+        eval_loss_sum = self._to_floats(self._eval_loss_sum)
+        eval_loss_count = self._to_floats(dict(self._eval_loss_count))
+        acc_correct = self._to_floats(self._acc_correct)
+        acc_total = self._to_floats(self._acc_total)
 
         # Per-component eval losses
         for k in LOSS_COMPONENTS:
-            if self._eval_loss_count[k] > 0:
-                output.metrics[f"{metric_key_prefix}_{k}"] = (
-                    self._eval_loss_sum[k] / self._eval_loss_count[k]
-                )
+            if eval_loss_count.get(k, 0) > 0:
+                output.metrics[f"{metric_key_prefix}_{k}"] = eval_loss_sum[k] / eval_loss_count[k]
 
         # Per-branch accuracies
-        for k in self._acc_total:
-            if self._acc_total[k] > 0:
-                output.metrics[f"{metric_key_prefix}_{k}_accuracy"] = (
-                    self._acc_correct[k] / self._acc_total[k]
-                )
+        for k in acc_total:
+            if acc_total[k] > 0:
+                output.metrics[f"{metric_key_prefix}_{k}_accuracy"] = acc_correct[k] / acc_total[k]
 
         # Overall token-weighted (micro) accuracy
-        total_correct = sum(self._acc_correct.values())
-        total_tokens = sum(self._acc_total.values())
+        total_correct = sum(acc_correct.values())
+        total_tokens = sum(acc_total.values())
         if total_tokens > 0:
             output.metrics[f"{metric_key_prefix}_accuracy"] = total_correct / total_tokens
 
