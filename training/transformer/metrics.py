@@ -1,6 +1,5 @@
 import os
 from collections import defaultdict
-from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 import torch
@@ -28,18 +27,10 @@ class HomrTrainer(Trainer):
     and overall token-weighted (micro) accuracy.
     """
 
-    def __init__(
-        self, *args: Any, distribute: Distribute, tpu_bf16: bool = False, **kwargs: Any
-    ) -> None:
-        """
-        tpu_bf16: Runs the forward pass under bf16 autocast on TPUs. Used instead of
-        TrainingArguments.bf16, because transformers 4.x rejects bf16=True when neither
-        CUDA nor torch_xla is present.
-        """
+    def __init__(self, *args: Any, distribute: Distribute, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
         self._distribute = distribute
-        self._tpu_bf16 = tpu_bf16
 
         # Training loss accumulators, kept on the device to avoid a sync per step
         self._loss_sum: dict[str, Tensor | float] = defaultdict(float)
@@ -52,11 +43,6 @@ class HomrTrainer(Trainer):
         self._acc_total: dict[str, Tensor | float] = defaultdict(float)
 
         self._rhythm_map = map_rhythm_symbol_with_position()
-
-    def _autocast(self) -> AbstractContextManager[Any]:
-        if self._tpu_bf16:
-            return torch.autocast(device_type="tpu", dtype=torch.bfloat16)
-        return nullcontext()
 
     def compute_loss(
         self,
@@ -80,8 +66,7 @@ class HomrTrainer(Trainer):
                         sampling_prob, device=inputs["rhythms"].device
                     )
 
-        with self._autocast():
-            outputs = model(**inputs)
+        outputs = model(**inputs)
         loss = outputs["loss"]
 
         if model.training:
@@ -103,7 +88,7 @@ class HomrTrainer(Trainer):
 
         inputs = self._prepare_inputs(inputs)
 
-        with torch.no_grad(), self._autocast():
+        with torch.no_grad():
             outputs = model(**inputs)
 
         # Accumulate per-branch eval losses

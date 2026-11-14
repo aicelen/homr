@@ -134,6 +134,11 @@ def train_transformer(
     distribute = Distribute()
     tpu = distribute.tpu
     if tpu:
+        # On TPU, float32 matmuls/convs use native bfloat16 MXU instructions with float32
+        # accumulation ("medium", the torch_tpu default) while VPU ops (layer_norm, softmax)
+        # stay in float32, without needing torch.autocast (which causes mixed-dtype broadcast
+        # errors in torch_tpu's MLIR lowering of LayerNorm).
+        torch.set_float32_matmul_precision("highest" if fp32 else "medium")
         eprint(f"Training on TPU with {distribute.get_world_size()} device(s)")
 
     number_of_epochs = 35
@@ -210,7 +215,7 @@ def train_transformer(
         report_to=["tensorboard"],
         logging_dir=os.path.join("logs", f"run{run_id}"),
         label_names=label_names,
-        # On TPU, HomrTrainer applies bf16 autocast itself, see tpu_bf16
+        # On TPU, MXU bfloat16 is controlled via set_float32_matmul_precision("medium") above
         bf16=not fp32 and not tpu,
         logging_nan_inf_filter=False,  # the filter syncs with the accelerator every step
         dataloader_pin_memory=not tpu,
@@ -252,7 +257,6 @@ def train_transformer(
             eval_dataset=datasets["validation"],
             callbacks=callbacks,
             distribute=distribute,
-            tpu_bf16=tpu and not fp32,
         )
 
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)
