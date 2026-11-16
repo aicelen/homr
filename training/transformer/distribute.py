@@ -23,22 +23,23 @@ def use_tpu() -> bool:
 
 
 def _configure_transformers_for_tpu() -> None:
-    """
-    Bridges torch_tpu into transformers 4.x / accelerate 1.x, whose device and
-    DynamoBackend lists do not yet include PrivateUse1 ("tpu").
-    """
+    import sys  # noqa: PLC0415
+
     import accelerate.utils.dataclasses as acc_dataclasses  # noqa: PLC0415
 
     os.environ.setdefault("ACCELERATE_TORCH_DEVICE", "tpu:0")
-    if "TPU" not in acc_dataclasses.DynamoBackend.__members__:
-        from enum import Enum  # noqa: PLC0415
+    old = acc_dataclasses.DynamoBackend
+    if "TPU" in old.__members__:
+        return
 
-        members = {m.name: m.value for m in acc_dataclasses.DynamoBackend}
-        members["TPU"] = "TPU"
-        acc_dataclasses.DynamoBackend = Enum(  # type: ignore[misc]
-            "DynamoBackend", members, type=acc_dataclasses.BaseEnum
-        )
+    members = {m.name: m.value for m in old}
+    members["TPU"] = "TPU"
+    new = acc_dataclasses.BaseEnum("DynamoBackend", members)
 
+    # Rebind everywhere the old enum was already imported
+    for mod in list(sys.modules.values()):
+        if mod is not None and getattr(mod, "DynamoBackend", None) is old:
+            mod.DynamoBackend = new
 
 class Distribute:
     def __init__(self) -> None:

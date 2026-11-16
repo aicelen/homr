@@ -158,7 +158,7 @@ def train_transformer(
     # PrIMuS isn't used: it has no beams and its Hugging Face copy is CC BY-NC (non-commercial)
     # MuseTrainer isn't used: 1k samples, it adds little next to PDMX and has no license file
     dataset_index = [
-        grandstaff_train_index,
+        pdmx_train_index,
     ]
     dataset_weights = [1.0]
     invalid_tokens_file = os.path.join(git_root, checkpoint_folder, "invalid_tokens.txt")
@@ -221,7 +221,7 @@ def train_transformer(
         dataloader_pin_memory=not tpu,
         # TPU compiles a new graph for every batch shape, a smaller last batch would add more
         dataloader_drop_last=tpu,
-        dataloader_num_workers=0,
+        dataloader_num_workers=12,
     )
 
     if fine_tune:
