@@ -6,16 +6,15 @@ from datetime import timedelta
 
 import torch
 
-try:
-    import torch_tpu  # noqa: F401
-except ImportError:
-    pass
-
-
 def use_tpu() -> bool:
     """
     True on a TPU with torch_tpu installed, e.g. a Colab TPU v5e-1 runtime.
     """
+    try:
+        import torch_tpu  # noqa: F401
+    except ImportError:
+        pass
+
     if not hasattr(torch, "accelerator"):
         return False
     acc = torch.accelerator.current_accelerator()
