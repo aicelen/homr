@@ -27,6 +27,10 @@ class Distribute:
         self.tpu = use_tpu()
         if self.tpu:
             os.environ.setdefault("ACCELERATE_TORCH_DEVICE", "tpu:0")
+            # Prevent spawned DataLoader workers from autoloading torch_tpu on `import torch`,
+            # which otherwise fails in worker torch.manual_seed() because the main process
+            # already holds the TPU PJRT lock.
+            os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
 
         world_size = int(os.environ.get("WORLD_SIZE", "1"))
         if world_size <= 1:
