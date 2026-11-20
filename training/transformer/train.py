@@ -196,7 +196,7 @@ def train_transformer(
 
     train_args = TrainingArguments(
         checkpoint_folder,
-        torch_compile=compile_model,
+        torch_compile=False,  # compiled via model.compile_modules()
         torch_compile_backend="tpu" if tpu else None,
         eval_strategy="epoch",
         save_strategy="epoch",
@@ -232,6 +232,9 @@ def train_transformer(
         model.unfreeze_lift_decoder()
     else:
         model = TrOMR(config)
+
+    if compile_model:
+        model.compile_modules()
 
     model_name = "pytorch_model"
 
