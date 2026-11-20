@@ -197,7 +197,6 @@ def train_transformer(
     train_args = TrainingArguments(
         checkpoint_folder,
         torch_compile=False,  # compiled via model.compile_modules()
-        torch_compile_backend="tpu" if tpu else None,
         eval_strategy="epoch",
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
@@ -234,7 +233,7 @@ def train_transformer(
         model = TrOMR(config)
 
     if compile_model:
-        model.compile_modules()
+        model.compile_modules(backend="tpu" if tpu else "inductor")
 
     model_name = "pytorch_model"
 

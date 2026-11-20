@@ -6,12 +6,13 @@ from datetime import timedelta
 
 import torch
 
+
 def use_tpu() -> bool:
     """
     True on a TPU with torch_tpu installed, e.g. a Colab TPU v5e-1 runtime.
     """
     try:
-        import torch_tpu  # noqa: F401
+        import torch_tpu  # noqa: F401, PLC0415
     except ImportError:
         pass
 
@@ -21,30 +22,11 @@ def use_tpu() -> bool:
     return acc is not None and acc.type == "tpu" and torch.accelerator.is_available()
 
 
-def _configure_transformers_for_tpu() -> None:
-    import sys  # noqa: PLC0415
-
-    import accelerate.utils.dataclasses as acc_dataclasses  # noqa: PLC0415
-
-    os.environ.setdefault("ACCELERATE_TORCH_DEVICE", "tpu:0")
-    old = acc_dataclasses.DynamoBackend
-    if "TPU" in old.__members__:
-        return
-
-    members = {m.name: m.value for m in old}
-    members["TPU"] = "TPU"
-    new = acc_dataclasses.BaseEnum("DynamoBackend", members)
-
-    # Rebind everywhere the old enum was already imported
-    for mod in list(sys.modules.values()):
-        if mod is not None and getattr(mod, "DynamoBackend", None) is old:
-            mod.DynamoBackend = new
-
 class Distribute:
     def __init__(self) -> None:
         self.tpu = use_tpu()
         if self.tpu:
-            _configure_transformers_for_tpu()
+            os.environ.setdefault("ACCELERATE_TORCH_DEVICE", "tpu:0")
 
         world_size = int(os.environ.get("WORLD_SIZE", "1"))
         if world_size <= 1:

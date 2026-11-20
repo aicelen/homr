@@ -20,11 +20,11 @@ class TrOMR(nn.Module):
         self.decoder.eval()
         self.encoder.eval()
 
-    def compile_modules(self) -> None:
+    def compile_modules(self, backend: str = "inductor") -> None:
         """Compile encoder and repeated decoder blocks separately in-place."""
-        self.encoder.compile()
+        self.encoder.compile(backend=backend)
         for _norm, block, _residual in self.decoder.net.attn_layers.layers:
-            block.compile()
+            block.compile(backend=backend)
 
     def forward(
         self,
