@@ -12,7 +12,8 @@ I had issues with 2.9.2
 
 # flake8: noqa: S101
 
-from torch import Tensor, arange, long, nn, rand, where
+from torch import Tensor, arange, is_grad_enabled, long, nn, rand, where
+from torch.utils.checkpoint import checkpoint
 from x_transformers.x_transformers import (  # noqa: F401
     AbsolutePositionalEmbedding,
     AttentionLayers,
@@ -41,6 +42,10 @@ __all__ = [
 
 
 class CustomAttentionLayers(AttentionLayers):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.grad_checkpointing = False
+
     def forward(
         self,
         x,
@@ -236,6 +241,22 @@ class CustomAttentionLayers(AttentionLayers):
 
         # store all hiddens for skips
 
+        has_skip_combine = any(exists(s) for s in self.skip_combines)
+        has_layer_integrator = any(exists(li) for li in self.layer_integrators)
+        need_intermediates = (
+            return_hiddens
+            or self.add_value_residual
+            or self.residual_attn
+            or self.cross_residual_attn
+            or exists(cache)
+        )
+        use_checkpoint = (
+            self.grad_checkpointing
+            and self.training
+            and is_grad_enabled()
+            and not need_intermediates
+        )
+
         skip_hiddens = []
 
         # for value residuals
@@ -258,7 +279,8 @@ class CustomAttentionLayers(AttentionLayers):
 
             # handle skip connections
 
-            skip_hiddens.append(x)
+            if has_skip_combine:
+                skip_hiddens.append(x)
 
             if exists(skip_combine):
                 x = skip_combine(x, skip_hiddens)
@@ -286,7 +308,8 @@ class CustomAttentionLayers(AttentionLayers):
 
             x, inner_residual, residual_kwargs = residual_fn.prepare(x)
 
-            layer_hiddens.append(x)
+            if return_hiddens or has_layer_integrator:
+                layer_hiddens.append(x)
 
             if exists(layer_integrator):
                 x = layer_integrator(x, layer_hiddens)
@@ -328,49 +351,64 @@ class CustomAttentionLayers(AttentionLayers):
                     layer_cache = attn_cache[attn_cache_index]
                 attn_cache_index += 1
 
+            inter = None
             if layer_type == "a":
-                out, inter = block(
-                    x,
-                    mask=mask,
-                    context_mask=self_attn_kv_mask,
-                    attn_mask=attn_mask,
-                    rel_pos=self.rel_pos,
-                    pos=pos,
-                    rotary_pos_emb=rotary_pos_emb,
-                    prev_attn=prev_attn,
-                    cache=layer_cache,
-                    mem=layer_mem,
-                    mem_mask=layer_mem_mask,
-                    attn_bias=attn_bias,
-                    value_residual=maybe_self_attn_value_residual,
-                    return_intermediates=True,
-                )
+                attn_kwargs = {
+                    "mask": mask,
+                    "context_mask": self_attn_kv_mask,
+                    "attn_mask": attn_mask,
+                    "rel_pos": self.rel_pos,
+                    "pos": pos,
+                    "rotary_pos_emb": rotary_pos_emb,
+                    "prev_attn": prev_attn,
+                    "cache": layer_cache,
+                    "mem": layer_mem,
+                    "mem_mask": layer_mem_mask,
+                    "attn_bias": attn_bias,
+                    "value_residual": maybe_self_attn_value_residual,
+                    "return_intermediates": need_intermediates,
+                }
+                if use_checkpoint:
+                    out = checkpoint(partial(block, **attn_kwargs), x, use_reentrant=False)
+                elif not need_intermediates:
+                    out = block(x, **attn_kwargs)
+                else:
+                    out, inter = block(x, **attn_kwargs)
             elif layer_type == "c":
-                out, inter = block(
-                    x,
-                    context=context,
-                    mask=mask,
-                    context_mask=context_mask,
-                    prev_attn=prev_cross_attn,
-                    cache=layer_cache,
-                    value_residual=maybe_cross_attn_value_residual,
+                cross_kwargs = {
+                    "mask": mask,
+                    "context_mask": context_mask,
+                    "prev_attn": prev_cross_attn,
+                    "cache": layer_cache,
+                    "value_residual": maybe_cross_attn_value_residual,
                     **cross_attn_rotary_pos_emb,
-                    return_intermediates=True,
-                )
+                    "return_intermediates": need_intermediates,
+                }
+                if use_checkpoint:
+                    out = checkpoint(
+                        partial(block, **cross_kwargs), x, context, use_reentrant=False
+                    )
+                elif not need_intermediates:
+                    out = block(x, context=context, **cross_kwargs)
+                else:
+                    out, inter = block(x, context=context, **cross_kwargs)
             elif layer_type == "f":
                 # Index instead of next(iterator, None), which breaks the torch.compile graph
                 deep_embed = None
                 if deep_embeds_index < len(deep_embeds):
                     deep_embed = deep_embeds[deep_embeds_index]
                 deep_embeds_index += 1
-                out = block(x, deep_embed=deep_embed)
+                if use_checkpoint:
+                    out = checkpoint(partial(block, deep_embed=deep_embed), x, use_reentrant=False)
+                else:
+                    out = block(x, deep_embed=deep_embed)
 
             # store first self or cross attention intermediate for value residual
 
-            if not exists(first_self_attn_inter) and layer_type == "a":
+            if self.add_value_residual and not exists(first_self_attn_inter) and layer_type == "a":
                 first_self_attn_inter = inter
 
-            if not exists(first_cross_attn_inter) and layer_type == "c":
+            if self.add_value_residual and not exists(first_cross_attn_inter) and layer_type == "c":
                 first_cross_attn_inter = inter
 
             if exists(post_branch_norm):

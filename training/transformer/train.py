@@ -133,11 +133,8 @@ def train_transformer(
 ) -> None:
     distribute = Distribute()
     tpu = distribute.tpu
+    tpu_bf16 = tpu and not fp32
     if tpu:
-        # On TPU, float32 matmuls/convs use native bfloat16 MXU instructions with float32
-        # accumulation ("medium", the torch_tpu default) while VPU ops (layer_norm, softmax)
-        # stay in float32, without needing torch.autocast (which causes mixed-dtype broadcast
-        # errors in torch_tpu's MLIR lowering of LayerNorm).
         torch.set_float32_matmul_precision("highest" if fp32 else "medium")
         eprint(f"Training on TPU with {distribute.get_world_size()} device(s)")
 
@@ -201,7 +198,7 @@ def train_transformer(
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
         optim="adamw_torch" if tpu else "adamw_torch_fused",  # TPU has no CUDA fused AdamW
-        gradient_accumulation_steps=max(1, 2 // distribute.get_world_size()),
+        gradient_accumulation_steps=8,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=eval_batch_size,
         num_train_epochs=number_of_epochs,
@@ -214,7 +211,8 @@ def train_transformer(
         report_to=["tensorboard"],
         logging_dir=os.path.join("logs", f"run{run_id}"),
         label_names=label_names,
-        # On TPU, MXU bfloat16 is controlled via set_float32_matmul_precision("medium") above
+        # On TPU, TrainingArguments(bf16=True) rejects torch_tpu, so HomrTrainer
+        # enables torch.autocast("tpu", dtype=torch.bfloat16) via tpu_bf16 instead
         bf16=not fp32 and not tpu,
         logging_nan_inf_filter=False,  # the filter syncs with the accelerator every step
         dataloader_pin_memory=not tpu,
@@ -231,6 +229,10 @@ def train_transformer(
         model.unfreeze_lift_decoder()
     else:
         model = TrOMR(config)
+
+    model.set_grad_checkpointing(True)
+    if tpu_bf16:
+        model.cast_layernorms_to_fp32()
 
     if compile_model:
         model.compile_modules(backend="tpu" if tpu else "inductor")
@@ -259,6 +261,7 @@ def train_transformer(
             eval_dataset=datasets["validation"],
             callbacks=callbacks,
             distribute=distribute,
+            tpu_bf16=tpu_bf16,
         )
 
         trainer.train(resume_from_checkpoint=resume_from_checkpoint)

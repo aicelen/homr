@@ -1,3 +1,4 @@
+import contextlib
 import os
 from collections import defaultdict
 from typing import Any
@@ -28,10 +29,13 @@ class HomrTrainer(Trainer):
     and overall token-weighted (micro) accuracy.
     """
 
-    def __init__(self, *args: Any, distribute: Distribute, **kwargs: Any) -> None:
+    def __init__(
+        self, *args: Any, distribute: Distribute, tpu_bf16: bool = False, **kwargs: Any
+    ) -> None:
         super().__init__(*args, **kwargs)
 
         self._distribute = distribute
+        self._tpu_bf16 = tpu_bf16
 
         # Training loss accumulators, kept on the device to avoid a sync per step
         self._loss_sum: dict[str, Tensor | float] = defaultdict(float)
@@ -64,6 +68,11 @@ class HomrTrainer(Trainer):
     def get_test_dataloader(self, test_dataset: Dataset[Any]) -> DataLoader[Any]:
         return self._use_spawn_workers(super().get_test_dataloader(test_dataset))
 
+    def _autocast_context(self) -> contextlib.AbstractContextManager[Any]:
+        if self._tpu_bf16:
+            return torch.autocast(device_type="tpu", dtype=torch.bfloat16)
+        return contextlib.nullcontext()
+
     def compute_loss(
         self,
         model: torch.nn.Module,
@@ -86,7 +95,8 @@ class HomrTrainer(Trainer):
                         sampling_prob, device=inputs["rhythms"].device
                     )
 
-        outputs = model(**inputs)
+        with self._autocast_context():
+            outputs = model(**inputs)
         loss = outputs["loss"]
 
         if model.training:
@@ -108,7 +118,7 @@ class HomrTrainer(Trainer):
 
         inputs = self._prepare_inputs(inputs)
 
-        with torch.no_grad():
+        with torch.no_grad(), self._autocast_context():
             outputs = model(**inputs)
 
         # Accumulate per-branch eval losses

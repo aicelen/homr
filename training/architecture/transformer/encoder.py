@@ -67,6 +67,10 @@ class ConvNeXtEncoder(nn.Module):
         for param in self.model.parameters():
             param.requires_grad = True
 
+    def set_grad_checkpointing(self, enable: bool = True) -> None:
+        """Enable or disable gradient checkpointing on the ConvNeXt backbone."""
+        self.model.set_grad_checkpointing(enable=enable)  # type: ignore
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Get stage 2 (stride 16), the stages after it aren't computed
         features = self.model.forward_intermediates(  # type: ignore
