@@ -250,8 +250,6 @@ def train_transformer(
 
     try:
         callbacks: list[TrainerCallback] = [EarlyStoppingCallback(early_stopping_patience=5)]
-        if not fine_tune:
-            callbacks.append(FreezeCallback(epochs_to_freeze=2))
 
         trainer = HomrTrainer(
             model,
