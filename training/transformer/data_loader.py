@@ -192,7 +192,7 @@ def load_dataset(
     }
 
 
-SEQ_LEN_MULTIPLE = 64
+SEQ_LEN_MULTIPLE = 128
 
 
 def collate_trimmed(samples: list[dict[str, Any]]) -> dict[str, torch.Tensor]:

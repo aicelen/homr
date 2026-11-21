@@ -188,7 +188,7 @@ def train_transformer(
 
     run_id = get_run_id()
 
-    batch_size = 24  # 16gb vram
+    batch_size = 16  # 16gb vram
     eval_batch_size = 16
 
     train_args = TrainingArguments(
@@ -198,7 +198,7 @@ def train_transformer(
         save_strategy="epoch",
         learning_rate=1e-5 if fine_tune else 1e-4,
         optim="adamw_torch" if tpu else "adamw_torch_fused",  # TPU has no CUDA fused AdamW
-        gradient_accumulation_steps=2,
+        gradient_accumulation_steps=4,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=eval_batch_size,
         num_train_epochs=number_of_epochs,
