@@ -25,25 +25,6 @@ def _cast_output_to_autocast_dtype(_module: nn.Module, _args: tuple[Any, ...], o
     return output
 
 
-def _cast_input_to_fp32(
-    _module: nn.Module, args: tuple[Any, ...]
-) -> tuple[Any, ...] | None:
-    if not args or not isinstance(args[0], torch.Tensor):
-        return None
-    x = args[0]
-    if x.is_floating_point() and x.dtype != torch.float32:
-        return (x.to(torch.float32), *args[1:])
-    return None
-
-
-def _cast_output_to_autocast_dtype(
-    _module: nn.Module, _args: tuple[Any, ...], output: Any
-) -> Any:
-    if isinstance(output, torch.Tensor) and torch.is_autocast_enabled(output.device.type):
-        return output.to(torch.get_autocast_dtype(output.device.type))
-    return output
-
-
 class TrOMR(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
@@ -154,7 +135,7 @@ def load_model(config: Config) -> TrOMR:
         import safetensors  # noqa: PLC0415
 
         tensors = {}
-        with safetensors.safe_open(checkpoint_path, framework="pt", device=0) as f:
+        with safetensors.safe_open(checkpoint_path, framework="pt", device="cpu") as f:
             for k in f.keys():
                 tensors[k] = f.get_tensor(k)
         model.load_state_dict(tensors, strict=False)
@@ -163,5 +144,6 @@ def load_model(config: Config) -> TrOMR:
         model.load_state_dict(
             torch.load(checkpoint_path, map_location=device, weights_only=True), strict=False
         )
-    model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+    if torch.cuda.is_available():
+        model.to(torch.device("cuda"))
     return model

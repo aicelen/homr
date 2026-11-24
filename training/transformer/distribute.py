@@ -9,7 +9,7 @@ import torch
 
 def use_tpu() -> bool:
     """
-    True on a TPU with torch_tpu installed, e.g. a Colab TPU v5e-1 runtime.
+    True on a TPU with torch_tpu installed, e.g. a TPU v5e-1 or v5e-8 runtime.
     """
     try:
         import torch_tpu  # noqa: F401, PLC0415
@@ -20,6 +20,42 @@ def use_tpu() -> bool:
         return False
     acc = torch.accelerator.current_accelerator()
     return acc is not None and acc.type == "tpu" and torch.accelerator.is_available()
+
+
+def configure_accelerate_for_tpu_ddp(
+    rank: int,
+    local_rank: int,
+    world_size: int,
+    backend: str = "tpu_dist",
+    device: torch.device | None = None,
+) -> None:
+    """
+    accelerate 1.x PartialState._prepare_backend() does not yet recognize PrivateUse1 ("tpu"),
+    falling back to DistributedType.NO (world_size=1) and CUDA-style DDP device_ids=[local_rank].
+    Pre-configure PartialState for use_configured_state=True so dataloaders are sharded and
+    DistributedDataParallel uses device_ids=None.
+    """
+    from accelerate.state import (  # noqa: PLC0415
+        AcceleratorState,
+        DistributedType,
+        PartialState,
+    )
+
+    os.environ.setdefault("ACCELERATE_BYPASS_DEVICE_MAP", "true")
+    AcceleratorState._reset_state(reset_partial_state=True)
+    PartialState._shared_state.update(
+        {
+            "_cpu": False,
+            "backend": backend,
+            "debug": False,
+            "device": device if device is not None else torch.device("tpu:0"),
+            "distributed_type": DistributedType.MULTI_GPU,
+            "fork_launched": False,
+            "local_process_index": local_rank,
+            "num_processes": world_size,
+            "process_index": rank,
+        }
+    )
 
 
 class Distribute:
@@ -44,23 +80,42 @@ class Distribute:
             )
             return
 
+        # Prevent spawned DataLoader workers across multiple ranks from oversubscribing CPU threads
+        os.environ.setdefault("OMP_NUM_THREADS", "1")
+        os.environ.setdefault("MKL_NUM_THREADS", "1")
+
         assert torch.distributed.is_available()
         assert not torch.distributed.is_initialized()
 
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
         if self.tpu:
+            if "TORCH_TPU_TOPOLOGY" not in os.environ:
+                raise RuntimeError(
+                    "TORCH_TPU_TOPOLOGY is not set for multi-chip TPU training. "
+                    "Launch via `python3 -m training.train transformer` or run "
+                    "`eval $(python3 -m torch.tpu.distributed | sed 's/^/export /')` "
+                    "before `torchrun`."
+                )
             # Each torch_tpu worker process is bound to its own TPU chip (tpu:0)
             self._device = torch.device("tpu:0")
             torch.distributed.init_process_group(backend="tpu_dist", timeout=timedelta(hours=3))
+            self.rank = torch.distributed.get_rank()
+            configure_accelerate_for_tpu_ddp(
+                rank=self.rank,
+                local_rank=local_rank,
+                world_size=world_size,
+                backend="tpu_dist",
+                device=self._device,
+            )
         else:
             assert torch.cuda.is_available()
-            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
             torch.cuda.set_device(local_rank)
             self._device = torch.device(f"cuda:{local_rank}")
             torch.distributed.init_process_group(
                 backend="nccl", device_id=self._device, timeout=timedelta(hours=3)
             )
+            self.rank = torch.distributed.get_rank()
         self.enabled = True
-        self.rank = torch.distributed.get_rank()
         self.world_size = world_size
 
     def barrier(self) -> None:

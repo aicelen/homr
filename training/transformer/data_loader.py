@@ -133,7 +133,7 @@ class DataLoader:
         return prepare_for_tensor(img)
 
 
-def _filter_valid_samples(samples: list[str]) -> list[str]:
+def filter_valid_samples(samples: list[str]) -> list[str]:
     # Filter out samples whose notes require more than the allowed number of ledger lines.
     # MuseScore in these cases might decide to change the clef and then we get a mismatch
     # between what is visible on the image and the ground truth
@@ -163,8 +163,10 @@ def load_dataset(
     config: Config,
     val_split: float = 0.0,
     validation_cache_dir: str | None = None,
+    pre_filtered: bool = False,
 ) -> dict[str, Any]:
-    samples = _filter_valid_samples(samples)
+    if not pre_filtered:
+        samples = filter_valid_samples(samples)
     val_idx = int(len(samples) * val_split)
     training_list = samples[val_idx:]
     validation_list = samples[:val_idx]

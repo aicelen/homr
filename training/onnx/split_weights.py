@@ -23,6 +23,8 @@ def split_weights(input_path: str) -> None:
         if key.startswith("encoder."):
             # Remove encoder starting
             new_key = key.replace("encoder.", "")
+            if new_key.startswith(("model.stages.3.", "model.head.")):
+                continue
             # And add it to a seperate dict
             encoder_state_dict[new_key] = value
 

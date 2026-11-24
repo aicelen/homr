@@ -1,8 +1,10 @@
 import contextlib
 import os
 from collections import defaultdict
+from functools import partial
 from typing import Any
 
+import cv2
 import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
@@ -10,6 +12,14 @@ from transformers import Trainer
 
 from training.transformer.distribute import Distribute
 from training.transformer.training_vocabulary import map_rhythm_symbol_with_position
+
+
+def _init_spawn_worker(orig_worker_init_fn: Any, worker_id: int) -> None:
+    # Avoid OpenCV spawning a full thread pool inside every DataLoader worker process
+    cv2.setNumThreads(0)
+    if orig_worker_init_fn is not None:
+        orig_worker_init_fn(worker_id)
+
 
 LOSS_COMPONENTS = [
     "loss_rhythm",
@@ -55,6 +65,7 @@ class HomrTrainer(Trainer):
         if self.args.dataloader_num_workers > 0:
             inner = getattr(dataloader, "base_dataloader", dataloader)
             inner.multiprocessing_context = "spawn"
+            inner.worker_init_fn = partial(_init_spawn_worker, inner.worker_init_fn)
         return dataloader
 
     def get_train_dataloader(self) -> DataLoader[Any]:
@@ -81,8 +92,9 @@ class HomrTrainer(Trainer):
         num_items_in_batch: Tensor | int | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
         if model.training:
-            # Calculate sampling probability
-            config = getattr(model, "config", None)
+            # Unwrap DDP / compiled wrappers so .config is visible on multi-device runs
+            raw_model = self.accelerator.unwrap_model(model)
+            config = getattr(raw_model, "config", None)
             if config:
                 start_p = config.scheduled_sampling_start_prob
                 end_p = config.scheduled_sampling_end_prob
@@ -231,10 +243,11 @@ class HomrTrainer(Trainer):
 
     def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
         if self._loss_count and "loss" in logs:
+            loss_sum = self._to_floats(self._loss_sum)
+            loss_count = self._to_floats(dict(self._loss_count))
             for component in LOSS_COMPONENTS:
-                if self._loss_count[component] > 0:
-                    loss_sum = float(self._loss_sum[component])
-                    logs[component] = loss_sum / self._loss_count[component]
+                if loss_count.get(component, 0) > 0:
+                    logs[component] = loss_sum[component] / loss_count[component]
             self._loss_sum.clear()
             self._loss_count.clear()
 

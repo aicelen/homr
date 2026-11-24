@@ -829,7 +829,7 @@ def write_index(
     with open(index_path, "w") as f:
         file_number = 0
         skipped_files = 0
-        with multiprocessing.Pool(processes=8, maxtasksperchild=1000) as p:
+        with multiprocessing.Pool(processes=8, maxtasksperchild=100) as p:
             results = p.imap_unordered(convert, music_xml_files)
             while True:
                 try:

@@ -37,6 +37,10 @@ class ConvNeXtEncoder(nn.Module):
         # Extract features up to stage 2 (stride 16)
         self.feature_info = self.model.feature_info[2]  # type: ignore
         in_features = int(self.feature_info["num_chs"])  # type: ignore
+        # Stage 3 and the classifier head norm are never computed (stop_early=True);
+        # prune them so DDP and optimizer states do not allocate or track dead parameters.
+        self.model.prune_intermediate_layers(indices=[2], prune_norm=True, prune_head=True)  # type: ignore
+        self.model.head = nn.Identity()
         self.proj = nn.Linear(in_features, config.encoder_dim)
 
         # Instead of learning pos_embed for each of 1280 positions,
