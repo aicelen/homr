@@ -27,6 +27,7 @@ from training.omr_datasets.filter_from_index import (
     without_invalid_tokens,
     write_invalid_tokens,
 )
+from training.omr_datasets.photo_index import photos_train_index
 from training.run_id import get_run_id
 from training.transformer.data_loader import collate_trimmed, label_names, load_dataset
 from training.transformer.distribute import Distribute
@@ -125,6 +126,14 @@ def _check_datasets_are_present(selected_datasets: list[str], invalid_tokens_fil
 
         if dataset == pdmx_train_index and not os.path.exists(pdmx_train_index):
             convert_pdmx()
+
+        if dataset == photos_train_index and not os.path.exists(photos_train_index):
+            # imported here: it needs the engraving libraries, which only this converter uses
+            from training.omr_datasets.convert_photos import (  # noqa: PLC0415
+                convert_photos,
+            )
+
+            convert_photos()
     write_invalid_tokens(invalid_tokens_file)
 
 
