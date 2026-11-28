@@ -67,13 +67,8 @@ Batch size for FP16 - don't forget to also modify gradient_accumulation_steps:
 Distributed Training:
 
 - Distributed training supports single-machine, multi-GPU setups. Using 4 GPUs as an example, run: `CUDA_VISIBLE_DEVICES=0,1,2,3 poetry run torchrun --standalone --nnodes=1 --nproc_per_node=4 training/train.py transformer`
-- TPU training (`TPU v5e-1` and `TPU v5e-8`) is supported via `torch_tpu` (`--extra tpu`, see [colab_train_tpu.ipynb](colab_train_tpu.ipynb)). Running `python3 -m training.train transformer` works on both `v5e-1` (single process, `batch_size=16, grad_accum=4`) and `v5e-8` (automatically queries `torch.tpu.distributed` and launches 8 DDP workers over `tpu_dist` with `batch_size=8, grad_accum=1` to keep the global batch size at `64`). You can also launch explicitly with:
-  ```
-  eval $(python3 -m torch.tpu.distributed | sed 's/^/export /')
-  torchrun --standalone --nnodes=1 --nproc_per_node=8 -m training.train transformer
-  ```
 - Dataset generation and model loading/saving are handled by rank0.
-- It is recommended to use 2 or 4 GPUs (or 1 / 4 / 8 TPU chips) to keep training consistent with single-GPU training. For other device counts, adjust `--batch-size` and `--grad-accum`. Multi-node, multi-GPU training is theoretically supported, but has not been tested in practice.
+- It is recommended to use 2 or 4 GPUs to keep training consistent with single-GPU training. For other GPU counts, you need to manually adjust the `gradient_accumulation_steps` parameter. Multi-node, multi-GPU training is theoretically supported, but has not been tested in practice.
 
 Cloud Training:
 

@@ -2,27 +2,11 @@ from typing import Any
 
 import torch
 from torch import nn
-from x_transformers.x_transformers import LayerNorm as XTransformerLayerNorm
 
 from homr.transformer.configs import Config
 from homr.transformer.vocabulary import EncodedSymbol
 from training.architecture.transformer.decoder import get_decoder
 from training.architecture.transformer.encoder import get_encoder
-
-
-def _cast_input_to_fp32(_module: nn.Module, args: tuple[Any, ...]) -> tuple[Any, ...] | None:
-    if not args or not isinstance(args[0], torch.Tensor):
-        return None
-    x = args[0]
-    if x.is_floating_point() and x.dtype != torch.float32:
-        return (x.to(torch.float32), *args[1:])
-    return None
-
-
-def _cast_output_to_autocast_dtype(_module: nn.Module, _args: tuple[Any, ...], output: Any) -> Any:
-    if isinstance(output, torch.Tensor) and torch.is_autocast_enabled(output.device.type):
-        return output.to(torch.get_autocast_dtype(output.device.type))
-    return output
 
 
 class TrOMR(nn.Module):
@@ -41,26 +25,6 @@ class TrOMR(nn.Module):
         self.encoder.compile(backend=backend)
         for _norm, block, _residual in self.decoder.net.attn_layers.layers:
             block.compile(backend=backend)
-
-    def set_grad_checkpointing(self, enable: bool = True) -> None:
-        """Enable or disable gradient checkpointing on encoder and decoder."""
-        self.encoder.set_grad_checkpointing(enable)
-        self.decoder.net.attn_layers.grad_checkpointing = enable
-
-    def cast_layernorms_to_fp32(self) -> None:
-        """
-        Keep LayerNorm inputs/ops in fp32 under bfloat16 autocast and cast outputs back.
-        Avoids mixed-dtype broadcast errors in torch_tpu's MLIR lowering of LayerNorm.
-        """
-        inner_lns: set[nn.Module] = {
-            mod.ln for mod in self.modules() if isinstance(mod, XTransformerLayerNorm)
-        }
-        for mod in self.modules():
-            if mod in inner_lns:
-                continue
-            if isinstance(mod, (nn.LayerNorm, XTransformerLayerNorm)):
-                mod.register_forward_pre_hook(_cast_input_to_fp32)
-                mod.register_forward_hook(_cast_output_to_autocast_dtype)
 
     def forward(
         self,
@@ -135,7 +99,7 @@ def load_model(config: Config) -> TrOMR:
         import safetensors  # noqa: PLC0415
 
         tensors = {}
-        with safetensors.safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+        with safetensors.safe_open(checkpoint_path, framework="pt", device=0) as f:
             for k in f.keys():
                 tensors[k] = f.get_tensor(k)
         model.load_state_dict(tensors, strict=False)
@@ -144,6 +108,5 @@ def load_model(config: Config) -> TrOMR:
         model.load_state_dict(
             torch.load(checkpoint_path, map_location=device, weights_only=True), strict=False
         )
-    if torch.cuda.is_available():
-        model.to(torch.device("cuda"))
+    model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     return model
